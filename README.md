@@ -75,23 +75,23 @@ Opponent curriculum:
 HorizontalPong/
 ├── README.md                     # This file
 ├── requirements.txt              # Python dependencies
-├── src/                          # Source code
+├── src/                          # Core source code (environment + agents)
 │   ├── __init__.py
 │   ├── environment/              # Pong environment (no gymnasium)
 │   │   ├── __init__.py
 │   │   ├── pong_env.py           # PongEnv: reset, step, seed, reward, transitions
 │   │   └── renderer.py           # PongRenderer: frame rendering, GIF/video export
-│   ├── agent/                    # RL agents and neural networks
-│   │   ├── __init__.py
-│   │   ├── networks.py           # ActorNetwork, CriticNetwork (MLP)
-│   │   ├── actor_critic.py       # ActorCriticAgent: on-policy actor + off-policy critic
-│   │   ├── reinforce.py          # ReinforceAgent: Monte Carlo policy gradient
-│   │   └── replay_buffer.py      # ReplayBuffer for SARSA transitions
-│   └── run/                      # Training and evaluation scripts
+│   └── agent/                    # RL agents and neural networks
 │       ├── __init__.py
-│       ├── config.py             # Hyperparameter dataclasses
-│       ├── train.py              # Training entry point
-│       └── eval.py               # Evaluation and rollout recording
+│       ├── networks.py           # ActorNetwork, CriticNetwork (MLP)
+│       ├── actor_critic.py       # ActorCriticAgent: on-policy actor + off-policy critic
+│       ├── reinforce.py          # ReinforceAgent: Monte Carlo policy gradient
+│       └── replay_buffer.py      # ReplayBuffer for SARSA transitions
+├── run/                          # Run files: training and evaluation scripts
+│   ├── __init__.py
+│   ├── config.py                 # Hyperparameter dataclasses
+│   ├── train.py                  # Training entry point
+│   └── eval.py                   # Evaluation and rollout recording
 ├── artifacts/                    # Model checkpoints, training logs, GIFs
 │   └── .gitkeep
 └── analysis/                     # Evaluation and visualization
@@ -148,20 +148,20 @@ pip install -r requirements.txt
 
 ```bash
 # Actor-Critic
-python -m src.run.train --agent actor_critic --steps 500000 --seed 42
+python -m run.train --agent actor_critic --steps 500000 --seed 42
 
 # REINFORCE
-python -m src.run.train --agent reinforce --steps 500000 --seed 42
+python -m run.train --agent reinforce --steps 500000 --seed 42
 ```
 
 ### Evaluate
 
 ```bash
 # Actor-Critic
-python -m src.run.eval --agent actor_critic --checkpoint artifacts/ac_model.pt --episodes 100
+python -m run.eval --agent actor_critic --checkpoint artifacts/ac_model.pt --episodes 100
 
 # REINFORCE
-python -m src.run.eval --agent reinforce --checkpoint artifacts/reinforce_model.pt --episodes 100
+python -m run.eval --agent reinforce --checkpoint artifacts/reinforce_model.pt --episodes 100
 ```
 
 ### Expected Output

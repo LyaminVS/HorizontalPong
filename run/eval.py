@@ -5,8 +5,8 @@ Loads a saved model checkpoint, runs evaluation episodes, computes
 performance metrics, and optionally records a GIF rollout.
 
 Usage:
-    python -m src.run.eval --agent actor_critic --checkpoint artifacts/ac_model.pt --episodes 100
-    python -m src.run.eval --agent reinforce    --checkpoint artifacts/reinforce_model.pt --episodes 100
+    python -m run.eval --agent actor_critic --checkpoint artifacts/ac_model.pt --episodes 100
+    python -m run.eval --agent reinforce    --checkpoint artifacts/reinforce_model.pt --episodes 100
 """
 
 import argparse
@@ -17,7 +17,7 @@ from src.environment.pong_env import PongEnv
 from src.environment.renderer import PongRenderer
 from src.agent.actor_critic import ActorCriticAgent
 from src.agent.reinforce import ReinforceAgent
-from src.run.config import EvalConfig
+from run.config import EvalConfig
 
 
 def parse_args() -> argparse.Namespace:

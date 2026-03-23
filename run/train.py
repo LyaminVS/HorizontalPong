@@ -2,8 +2,8 @@
 Training script for Actor-Critic and REINFORCE agents on Horizontal Pong.
 
 Usage:
-    python -m src.run.train --agent actor_critic --steps 500000 --seed 42
-    python -m src.run.train --agent reinforce    --steps 500000 --seed 42
+    python -m run.train --agent actor_critic --steps 500000 --seed 42
+    python -m run.train --agent reinforce    --steps 500000 --seed 42
 
 Saves model checkpoints and training logs (CSV) to artifacts/.
 """
@@ -15,7 +15,7 @@ from typing import Dict, List
 from src.environment.pong_env import PongEnv
 from src.agent.actor_critic import ActorCriticAgent
 from src.agent.reinforce import ReinforceAgent
-from src.run.config import TrainConfig, ActorCriticConfig, ReinforceConfig
+from run.config import TrainConfig, ActorCriticConfig, ReinforceConfig
 
 
 def parse_args() -> argparse.Namespace:
