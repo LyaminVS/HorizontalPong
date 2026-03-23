@@ -59,6 +59,8 @@ def main() -> None:
     app_running = True
     episodes_played = 0
     episode_reward = 0.0
+    score_left = 0
+    score_right = 0
 
     try:
         while app_running and (args.episodes == 0 or episodes_played < args.episodes):
@@ -68,13 +70,19 @@ def main() -> None:
             _, reward, terminated, truncated, info = env.step(action)
             episode_reward += reward
 
+            winner = info.get("rally_winner")
+            if winner == "left":
+                score_left += 1
+            elif winner == "right":
+                score_right += 1
+
             renderer.render_frame(
                 bx=env.bx,
                 by=env.by,
                 py_agent=env.py,
                 py_opponent=env.ly,
-                score_agent=info["hits"],
-                score_opponent=0,
+                score_agent=score_right,
+                score_opponent=score_left,
             )
 
             if terminated or truncated:
@@ -82,7 +90,8 @@ def main() -> None:
                 print(
                     f"[Episode {episodes_played}] reward={episode_reward:.3f}, "
                     f"hits={info['hits']}, steps={info['step_count']}, "
-                    f"terminated={terminated}, truncated={truncated}"
+                    f"terminated={terminated}, truncated={truncated}, "
+                    f"score_left={score_left}, score_right={score_right}"
                 )
                 env.reset()
                 episode_reward = 0.0

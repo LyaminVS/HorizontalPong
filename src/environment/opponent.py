@@ -122,7 +122,7 @@ class LeftPaddleOpponent:
 
         Noise rule:
             delta ~ Uniform{-sigma, ..., +sigma}
-            vy_new = clamp(vy + delta, -3, +3)
+            vy_new = clamp(vy + delta, -max_ball_speed_y, +max_ball_speed_y)
 
         Args:
             vy: current vertical ball velocity.
@@ -133,9 +133,11 @@ class LeftPaddleOpponent:
         """
         sigma = self.get_sigma()
         if sigma == 0:
-            return int(np.clip(vy, -3, 3))
+            return int(np.clip(vy, -EnvConfig.max_ball_speed_y, EnvConfig.max_ball_speed_y))
         delta = int(rng.integers(-sigma, sigma + 1))
-        return int(np.clip(vy + delta, -3, 3))
+        return int(
+            np.clip(vy + delta, -EnvConfig.max_ball_speed_y, EnvConfig.max_ball_speed_y)
+        )
 
     def _predict_intercept_y(
         self, ball_x: int, ball_y: int, vx: int, vy: int, target_x: int

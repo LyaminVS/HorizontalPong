@@ -39,6 +39,8 @@ class PongEnv:
     PW: int = EnvConfig.paddle_width
     PH: int = EnvConfig.paddle_height
     PADDLE_SPEED: int = EnvConfig.paddle_speed
+    MAX_BALL_SPEED_X: int = EnvConfig.max_ball_speed_x
+    MAX_BALL_SPEED_Y: int = EnvConfig.max_ball_speed_y
     LX: int = EnvConfig.left_x
     RX: int = EnvConfig.right_x
     T_MAX: int = EnvConfig.t_max
@@ -50,8 +52,8 @@ class PongEnv:
         """
         self.observation_space: Dict[str, Any] = {
             "shape": (5,),
-            "low": np.array([0.0, 0.0, -2.0 / 3.0, -1.0, 0.0], dtype=np.float32),
-            "high": np.array([1.0, 1.0, 2.0 / 3.0, 1.0, 1.0], dtype=np.float32),
+            "low": np.array([0.0, 0.0, -1.0, -1.0, 0.0], dtype=np.float32),
+            "high": np.array([1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
             "dtype": np.float32,
         }
         self.action_space: Dict[str, Any] = {
@@ -108,8 +110,8 @@ class PongEnv:
 
         self.bx = self.W // 2
         self.by = self.H // 2
-        self.vx = int(self._rng.choice([-2, -1, 1, 2]))
-        self.vy = int(self._rng.integers(-3, 4))
+        self.vx = self._sample_initial_vx()
+        self.vy = int(self._rng.integers(-self.MAX_BALL_SPEED_Y, self.MAX_BALL_SPEED_Y + 1))
 
         return self._get_observation()
 
@@ -142,6 +144,9 @@ class PongEnv:
         self._step_count += 1
         self._global_step += 1
 
+        self._prev_bx = self.bx
+        self._prev_by = self.by
+
         self._move_paddle(action)
         self._move_ball()
         hit = self._check_agent_paddle_hit()
@@ -150,12 +155,22 @@ class PongEnv:
         reward = self._compute_reward(hit=hit)
         terminated, truncated = self._check_terminal()
 
+        rally_winner: Optional[str] = None
+        if terminated:
+            # Ball out on left side -> right paddle side wins rally.
+            # Ball out on right side -> left paddle side wins rally.
+            if self.bx < 0:
+                rally_winner = "right"
+            elif self.bx >= self.W:
+                rally_winner = "left"
+
         info = {
             "hits": self._hits,
             "step_count": self._step_count,
             "agent_paddle_y": self.py,
             "opponent_paddle_y": self.ly,
             "opponent_stub": False,
+            "rally_winner": rally_winner,
         }
         return self._get_observation(), reward, terminated, truncated, info
 
@@ -201,7 +216,11 @@ class PongEnv:
         """
         Check if the ball hits the agent's (right) paddle.
 
-        Condition: vx > 0 and bx >= RX and |by - py| <= PH/2.
+        Uses swept collision against the paddle x-line to avoid tunneling:
+        - detect whether ball crossed x = RX during this step,
+        - evaluate ball y at crossing point,
+        - test paddle overlap at that crossing y.
+
         On hit: vx = -|vx|, bx = RX - 1.
         Angular bounce is applied based on impact point:
             - hit near center -> minimal vertical change,
@@ -210,16 +229,29 @@ class PongEnv:
         Returns:
             True if the ball was deflected by the agent paddle.
         """
-        if self.vx > 0 and self.bx >= self.RX and abs(self.by - self.py) <= self.PH // 2:
+        crossed_right = self._prev_bx < self.RX <= self.bx and self.vx > 0
+        if not crossed_right:
+            return False
+
+        dx = self.bx - self._prev_bx
+        t = 0.0 if dx == 0 else (self.RX - self._prev_bx) / float(dx)
+        y_cross = self._prev_by + t * (self.by - self._prev_by)
+
+        if abs(y_cross - self.py) <= self.PH / 2.0:
             self.vx = -abs(self.vx)
             self.bx = self.RX - 1
+            self.by = int(np.clip(round(y_cross), 0, self.H - 1))
 
             # Angular bounce: edge hits produce stronger vertical deflection.
             half_ph = max(1, self.PH // 2)
             offset = self.by - self.py  # negative: upper edge, positive: lower edge
             normalized_offset = offset / float(half_ph)  # in [-1, 1] approximately
             angle_boost = int(round(2.0 * normalized_offset))  # map to {-2, -1, 0, 1, 2}
-            self.vy = int(np.clip(self.vy + angle_boost, -3, 3))
+            self.vy = int(
+                np.clip(
+                    self.vy + angle_boost, -self.MAX_BALL_SPEED_Y, self.MAX_BALL_SPEED_Y
+                )
+            )
 
             self._hits += 1
             return True
@@ -243,10 +275,19 @@ class PongEnv:
             vy=self.vy,
             target_x=self.LX,
         )
-        if self.vx < 0 and self.bx <= self.LX and abs(self.by - self.ly) <= self.PH // 2:
+        crossed_left = self._prev_bx > self.LX >= self.bx and self.vx < 0
+        if not crossed_left:
+            return
+
+        dx = self.bx - self._prev_bx
+        t = 0.0 if dx == 0 else (self.LX - self._prev_bx) / float(dx)
+        y_cross = self._prev_by + t * (self.by - self._prev_by)
+
+        if abs(y_cross - self.ly) <= self.PH / 2.0:
             self.vx = abs(self.vx)
             self.vy = self._opponent.apply_bounce_noise(self.vy, self._rng)
             self.bx = self.LX + 1
+            self.by = int(np.clip(round(y_cross), 0, self.H - 1))
 
     def _compute_reward(self, hit: bool) -> float:
         """
@@ -289,8 +330,8 @@ class PongEnv:
             [
                 self.bx / float(self.W),
                 self.by / float(self.H),
-                self.vx / 3.0,
-                self.vy / 3.0,
+                self.vx / float(max(1, self.MAX_BALL_SPEED_X)),
+                self.vy / float(max(1, self.MAX_BALL_SPEED_Y)),
                 self.py / float(self.H),
             ],
             dtype=np.float32,
@@ -320,3 +361,10 @@ class PongEnv:
         """
         self._global_step = int(max(0, step))
         self._opponent.set_global_step(self._global_step)
+
+    def _sample_initial_vx(self) -> int:
+        """Sample non-zero initial horizontal speed within configured limit."""
+        max_vx = max(1, self.MAX_BALL_SPEED_X)
+        vx_abs = int(self._rng.integers(1, max_vx + 1))
+        sign = int(self._rng.choice([-1, 1]))
+        return sign * vx_abs
