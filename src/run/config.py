@@ -1,0 +1,80 @@
+"""
+Centralized hyperparameter configuration for training and evaluation.
+
+All parameters from the specification are collected here as dataclass defaults.
+"""
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class EnvConfig:
+    """Environment parameters."""
+    width: int = 160
+    height: int = 120
+    paddle_width: int = 2
+    paddle_height: int = 12
+    left_x: int = 6
+    right_x: int = 153
+    t_max: int = 2000
+
+
+@dataclass
+class ActorCriticConfig:
+    """Hyperparameters for the Actor-Critic agent."""
+    state_dim: int = 5
+    action_dim: int = 3
+    hidden_dim: int = 128
+    gamma: float = 0.99
+    lr_actor: float = 3e-4
+    lr_critic: float = 1e-4
+    entropy_coeff: float = 0.01
+    buffer_capacity: int = 10_000
+    batch_size: int = 64
+    update_every: int = 10
+
+
+@dataclass
+class ReinforceConfig:
+    """Hyperparameters for the REINFORCE agent."""
+    state_dim: int = 5
+    action_dim: int = 3
+    hidden_dim: int = 128
+    gamma: float = 0.99
+    lr_actor: float = 3e-4
+
+
+@dataclass
+class TrainConfig:
+    """Training pipeline parameters."""
+    total_steps: int = 500_000
+    seed: int = 42
+    log_interval: int = 100
+    save_interval: int = 50_000
+    device: str = "cpu"
+    artifacts_dir: str = "artifacts"
+
+
+@dataclass
+class EvalConfig:
+    """Evaluation pipeline parameters."""
+    num_episodes: int = 100
+    seed: int = 123
+    render: bool = False
+    save_gif: bool = True
+    device: str = "cpu"
+    artifacts_dir: str = "artifacts"
+
+
+@dataclass
+class RewardConfig:
+    """Reward shaping parameters."""
+    alpha_initial: float = 0.01
+    alpha_decay_steps: int = 100_000
+
+
+@dataclass
+class CurriculumConfig:
+    """Opponent difficulty curriculum schedule."""
+    sigma_0_until: int = 50_000
+    sigma_1_until: int = 150_000
