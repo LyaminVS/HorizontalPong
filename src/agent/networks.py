@@ -10,6 +10,7 @@ CriticNetwork (Q-function) is used by Actor-Critic.
 
 import torch
 import torch.nn as nn
+from run.config import ActorCriticConfig
 
 
 class ActorNetwork(nn.Module):
@@ -24,7 +25,12 @@ class ActorNetwork(nn.Module):
     Output: action probability distribution of shape (batch, 3).
     """
 
-    def __init__(self, state_dim: int = 5, hidden_dim: int = 128, action_dim: int = 3) -> None:
+    def __init__(
+        self,
+        state_dim: int = ActorCriticConfig.state_dim,
+        hidden_dim: int = ActorCriticConfig.hidden_dim,
+        action_dim: int = ActorCriticConfig.action_dim,
+    ) -> None:
         """
         Initialize the actor MLP layers.
 
@@ -61,7 +67,10 @@ class CriticNetwork(nn.Module):
     """
 
     def __init__(
-        self, state_dim: int = 5, action_dim: int = 3, hidden_dim: int = 128
+        self,
+        state_dim: int = ActorCriticConfig.state_dim,
+        action_dim: int = ActorCriticConfig.action_dim,
+        hidden_dim: int = ActorCriticConfig.hidden_dim,
     ) -> None:
         """
         Initialize the critic MLP layers.

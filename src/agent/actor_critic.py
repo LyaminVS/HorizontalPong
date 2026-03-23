@@ -15,6 +15,7 @@ from typing import Dict, Optional
 
 from src.agent.networks import ActorNetwork, CriticNetwork
 from src.agent.replay_buffer import ReplayBuffer
+from run.config import ActorCriticConfig
 
 
 class ActorCriticAgent:
@@ -36,16 +37,16 @@ class ActorCriticAgent:
 
     def __init__(
         self,
-        state_dim: int = 5,
-        action_dim: int = 3,
-        hidden_dim: int = 128,
-        gamma: float = 0.99,
-        lr_actor: float = 3e-4,
-        lr_critic: float = 1e-4,
-        entropy_coeff: float = 0.01,
-        buffer_capacity: int = 10_000,
-        batch_size: int = 64,
-        update_every: int = 10,
+        state_dim: int = ActorCriticConfig.state_dim,
+        action_dim: int = ActorCriticConfig.action_dim,
+        hidden_dim: int = ActorCriticConfig.hidden_dim,
+        gamma: float = ActorCriticConfig.gamma,
+        lr_actor: float = ActorCriticConfig.lr_actor,
+        lr_critic: float = ActorCriticConfig.lr_critic,
+        entropy_coeff: float = ActorCriticConfig.entropy_coeff,
+        buffer_capacity: int = ActorCriticConfig.buffer_capacity,
+        batch_size: int = ActorCriticConfig.batch_size,
+        update_every: int = ActorCriticConfig.update_every,
         device: str = "cpu",
     ) -> None:
         """

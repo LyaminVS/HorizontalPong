@@ -77,6 +77,14 @@ class EvalConfig:
 
 
 @dataclass
+class RenderConfig:
+    """Rendering parameters."""
+    scale: int = 4
+    fps: int = 60
+    gif_fps: int = 30
+
+
+@dataclass
 class RewardConfig:
     """Reward shaping parameters."""
     alpha_initial: float = 0.01

@@ -14,6 +14,7 @@ import numpy as np
 from typing import Dict, List
 
 from src.agent.networks import ActorNetwork
+from run.config import ReinforceConfig
 
 
 class ReinforceAgent:
@@ -28,11 +29,11 @@ class ReinforceAgent:
 
     def __init__(
         self,
-        state_dim: int = 5,
-        action_dim: int = 3,
-        hidden_dim: int = 128,
-        gamma: float = 0.99,
-        lr_actor: float = 3e-4,
+        state_dim: int = ReinforceConfig.state_dim,
+        action_dim: int = ReinforceConfig.action_dim,
+        hidden_dim: int = ReinforceConfig.hidden_dim,
+        gamma: float = ReinforceConfig.gamma,
+        lr_actor: float = ReinforceConfig.lr_actor,
         device: str = "cpu",
     ) -> None:
         """

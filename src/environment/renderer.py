@@ -8,6 +8,8 @@ Captured frames can be exported as GIF/video for qualitative demonstration.
 import pygame
 import numpy as np
 from typing import List, Optional
+from run.config import EnvConfig, RenderConfig
+from PIL import Image
 
 
 class PongRenderer:
@@ -22,10 +24,10 @@ class PongRenderer:
 
     def __init__(
         self,
-        width: int = 160,
-        height: int = 120,
-        scale: int = 4,
-        fps: int = 60,
+        width: int = EnvConfig.width,
+        height: int = EnvConfig.height,
+        scale: int = RenderConfig.scale,
+        fps: int = RenderConfig.fps,
     ) -> None:
         """
         Initialize pygame, create a display window, and set up a clock.
@@ -39,7 +41,23 @@ class PongRenderer:
             scale: integer multiplier for the display window size.
             fps: target frames per second for real-time rendering.
         """
-        raise NotImplementedError
+        self.width = width
+        self.height = height
+        self.scale = scale
+        self.fps = fps
+
+        self.paddle_w = EnvConfig.paddle_width
+        self.paddle_h = EnvConfig.paddle_height
+        self.left_x = EnvConfig.left_x
+        self.right_x = EnvConfig.right_x
+
+        pygame.init()
+        pygame.font.init()
+        self._clock = pygame.time.Clock()
+        self._surface = pygame.Surface((self.width, self.height))
+        self._screen = pygame.display.set_mode((self.width * self.scale, self.height * self.scale))
+        pygame.display.set_caption("Horizontal Pong")
+        self._font = pygame.font.SysFont("Arial", 12)
 
     def render_frame(
         self,
@@ -72,7 +90,15 @@ class PongRenderer:
             score_agent: agent's current score (hits).
             score_opponent: opponent's current score.
         """
-        raise NotImplementedError
+        self._draw_on_surface(
+            self._surface, bx, by, py_agent, py_opponent, score_agent, score_opponent
+        )
+        scaled = pygame.transform.scale(
+            self._surface, (self.width * self.scale, self.height * self.scale)
+        )
+        self._screen.blit(scaled, (0, 0))
+        pygame.display.flip()
+        self._clock.tick(self.fps)
 
     def capture_frame(
         self,
@@ -98,7 +124,12 @@ class PongRenderer:
         Returns:
             frame: np.ndarray of shape (H, W, 3), dtype uint8 (RGB).
         """
-        raise NotImplementedError
+        offscreen = pygame.Surface((self.width, self.height))
+        self._draw_on_surface(
+            offscreen, bx, by, py_agent, py_opponent, score_agent, score_opponent
+        )
+        arr = pygame.surfarray.array3d(offscreen)  # (W, H, 3)
+        return np.transpose(arr, (1, 0, 2)).copy()  # (H, W, 3)
 
     def handle_events(self) -> bool:
         """
@@ -109,9 +140,14 @@ class PongRenderer:
         Returns:
             running: False if the user closed the window, True otherwise.
         """
-        raise NotImplementedError
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+        return True
 
-    def save_gif(self, frames: List[np.ndarray], filepath: str, fps: int = 30) -> None:
+    def save_gif(
+        self, frames: List[np.ndarray], filepath: str, fps: int = RenderConfig.gif_fps
+    ) -> None:
         """
         Save a sequence of captured frames as an animated GIF file using Pillow.
 
@@ -120,10 +156,69 @@ class PongRenderer:
             filepath: output path for the GIF file (e.g. "artifacts/rollout.gif").
             fps: frames per second.
         """
-        raise NotImplementedError
+        if not frames:
+            raise ValueError("frames list is empty")
+
+        pil_frames = [Image.fromarray(frame) for frame in frames]
+        duration_ms = int(1000 / max(1, fps))
+        pil_frames[0].save(
+            filepath,
+            save_all=True,
+            append_images=pil_frames[1:],
+            duration=duration_ms,
+            loop=0,
+        )
 
     def close(self) -> None:
         """
         Quit pygame and release all display resources.
         """
-        raise NotImplementedError
+        pygame.quit()
+
+    def _draw_on_surface(
+        self,
+        surface: pygame.Surface,
+        bx: int,
+        by: int,
+        py_agent: int,
+        py_opponent: int,
+        score_agent: int,
+        score_opponent: int,
+    ) -> None:
+        """Draw current game state to a target surface."""
+        black = (0, 0, 0)
+        white = (255, 255, 255)
+
+        surface.fill(black)
+
+        # Dashed center line.
+        for y in range(0, self.height, 8):
+            pygame.draw.line(
+                surface, white, (self.width // 2, y), (self.width // 2, min(y + 4, self.height))
+            )
+
+        # Paddles.
+        left_rect = pygame.Rect(
+            self.left_x,
+            int(py_opponent - self.paddle_h // 2),
+            self.paddle_w,
+            self.paddle_h,
+        )
+        right_rect = pygame.Rect(
+            self.right_x,
+            int(py_agent - self.paddle_h // 2),
+            self.paddle_w,
+            self.paddle_h,
+        )
+        pygame.draw.rect(surface, white, left_rect)
+        pygame.draw.rect(surface, white, right_rect)
+
+        # Ball.
+        ball_rect = pygame.Rect(int(bx), int(by), 2, 2)
+        pygame.draw.rect(surface, white, ball_rect)
+
+        # Score.
+        score_text = f"{score_opponent} : {score_agent}"
+        text = self._font.render(score_text, True, white)
+        text_x = self.width // 2 - text.get_width() // 2
+        surface.blit(text, (text_x, 4))

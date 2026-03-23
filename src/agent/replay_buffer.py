@@ -9,6 +9,7 @@ Capacity M = 10,000 transitions (configurable).
 
 import numpy as np
 from typing import Tuple, Dict
+from run.config import ActorCriticConfig
 
 
 class ReplayBuffer:
@@ -20,7 +21,11 @@ class ReplayBuffer:
         size: current number of stored transitions.
     """
 
-    def __init__(self, capacity: int = 10_000, state_dim: int = 5) -> None:
+    def __init__(
+        self,
+        capacity: int = ActorCriticConfig.buffer_capacity,
+        state_dim: int = ActorCriticConfig.state_dim,
+    ) -> None:
         """
         Allocate pre-sized numpy arrays for each component of the transition.
 
@@ -52,7 +57,7 @@ class ReplayBuffer:
         """
         raise NotImplementedError
 
-    def sample(self, batch_size: int = 64) -> Dict[str, np.ndarray]:
+    def sample(self, batch_size: int = ActorCriticConfig.batch_size) -> Dict[str, np.ndarray]:
         """
         Sample a random mini-batch of transitions.
 

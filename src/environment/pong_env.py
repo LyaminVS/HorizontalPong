@@ -9,14 +9,19 @@ Actions: 0=Up, 1=Down, 2=Stay.
 No gymnasium dependency.
 """
 
+from typing import Any, Dict, Optional, Tuple
+
 import numpy as np
-from typing import Tuple, Optional, Dict, Any
+
+from run.config import EnvConfig, RewardConfig
 
 
 class PongEnv:
     """
     Custom RL environment for discrete horizontal Pong.
     Implements reset/step/seed API without gymnasium.
+    Uses a dedicated opponent module (`LeftPaddleOpponent`) for
+    the left paddle control and bounce-noise curriculum.
 
     Attributes:
         W, H: field dimensions (160 x 120)
@@ -28,20 +33,46 @@ class PongEnv:
     """
 
     # --- Constants ---
-    W: int = 160
-    H: int = 120
-    PW: int = 2
-    PH: int = 12
-    LX: int = 6
-    RX: int = 153
-    T_MAX: int = 2000
+    W: int = EnvConfig.width
+    H: int = EnvConfig.height
+    PW: int = EnvConfig.paddle_width
+    PH: int = EnvConfig.paddle_height
+    LX: int = EnvConfig.left_x
+    RX: int = EnvConfig.right_x
+    T_MAX: int = EnvConfig.t_max
 
     def __init__(self) -> None:
         """
         Initialize the environment: set field parameters, define observation_space
         and action_space dicts, initialize internal state to None.
         """
-        raise NotImplementedError
+        self.observation_space: Dict[str, Any] = {
+            "shape": (5,),
+            "low": np.array([0.0, 0.0, -2.0 / 3.0, -1.0, 0.0], dtype=np.float32),
+            "high": np.array([1.0, 1.0, 2.0 / 3.0, 1.0, 1.0], dtype=np.float32),
+            "dtype": np.float32,
+        }
+        self.action_space: Dict[str, Any] = {
+            "n": 3,
+            "actions": [0, 1, 2],
+            "meaning": {0: "up", 1: "down", 2: "stay"},
+        }
+
+        self._rng = np.random.default_rng()
+        self._global_step = 0
+        self._step_count = 0
+        self._hits = 0
+
+        # Right paddle (agent) center.
+        self.py = self.H // 2
+        # Left paddle placeholder (static opponent).
+        self.ly = self.H // 2
+
+        # Ball state.
+        self.bx = self.W // 2
+        self.by = self.H // 2
+        self.vx = 1
+        self.vy = 0
 
     def seed(self, seed: Optional[int] = None) -> None:
         """
@@ -50,7 +81,7 @@ class PongEnv:
         Args:
             seed: integer seed for numpy RNG. If None, use a random seed.
         """
-        raise NotImplementedError
+        self._rng = np.random.default_rng(seed)
 
     def reset(self) -> np.ndarray:
         """
@@ -66,7 +97,18 @@ class PongEnv:
             observation: normalized state vector np.ndarray of shape (5,).
                          [bx/W, by/H, vx/3, vy/3, py/H]
         """
-        raise NotImplementedError
+        self._step_count = 0
+        self._hits = 0
+
+        self.py = self.H // 2
+        self.ly = self.H // 2  # static placeholder opponent
+
+        self.bx = self.W // 2
+        self.by = self.H // 2
+        self.vx = int(self._rng.choice([-2, -1, 1, 2]))
+        self.vy = int(self._rng.integers(-3, 4))
+
+        return self._get_observation()
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         """
@@ -91,7 +133,28 @@ class PongEnv:
             truncated: True if T_max steps reached.
             info: dict with auxiliary data (e.g. {"hits": int, "score": str}).
         """
-        raise NotImplementedError
+        if action not in (0, 1, 2):
+            raise ValueError(f"Invalid action {action}, expected one of [0, 1, 2].")
+
+        self._step_count += 1
+        self._global_step += 1
+
+        self._move_paddle(action)
+        self._move_ball()
+        hit = self._check_agent_paddle_hit()
+        self._check_opponent_paddle_hit()
+
+        reward = self._compute_reward(hit=hit)
+        terminated, truncated = self._check_terminal()
+
+        info = {
+            "hits": self._hits,
+            "step_count": self._step_count,
+            "agent_paddle_y": self.py,
+            "opponent_paddle_y": self.ly,
+            "opponent_stub": True,
+        }
+        return self._get_observation(), reward, terminated, truncated, info
 
     def _move_paddle(self, action: int) -> None:
         """
@@ -105,7 +168,14 @@ class PongEnv:
         Args:
             action: integer action.
         """
-        raise NotImplementedError
+        if action == 0:
+            self.py -= 1
+        elif action == 1:
+            self.py += 1
+
+        low = self.PH // 2
+        high = self.H - 1 - self.PH // 2
+        self.py = int(np.clip(self.py, low, high))
 
     def _move_ball(self) -> None:
         """
@@ -114,7 +184,15 @@ class PongEnv:
             if by <= 0:  by = 0,     vy = +|vy|
             if by >= H-1: by = H-1,  vy = -|vy|
         """
-        raise NotImplementedError
+        self.bx += self.vx
+        self.by += self.vy
+
+        if self.by <= 0:
+            self.by = 0
+            self.vy = abs(self.vy)
+        elif self.by >= self.H - 1:
+            self.by = self.H - 1
+            self.vy = -abs(self.vy)
 
     def _check_agent_paddle_hit(self) -> bool:
         """
@@ -122,38 +200,43 @@ class PongEnv:
 
         Condition: vx > 0 and bx >= RX and |by - py| <= PH/2.
         On hit: vx = -|vx|, bx = RX - 1.
-        Optional angular bounce: vy += sign(by - py).
+        Angular bounce is applied based on impact point:
+            - hit near center -> minimal vertical change,
+            - hit near paddle edges -> stronger vertical deflection.
 
         Returns:
             True if the ball was deflected by the agent paddle.
         """
-        raise NotImplementedError
+        if self.vx > 0 and self.bx >= self.RX and abs(self.by - self.py) <= self.PH // 2:
+            self.vx = -abs(self.vx)
+            self.bx = self.RX - 1
+
+            # Angular bounce: edge hits produce stronger vertical deflection.
+            half_ph = max(1, self.PH // 2)
+            offset = self.by - self.py  # negative: upper edge, positive: lower edge
+            normalized_offset = offset / float(half_ph)  # in [-1, 1] approximately
+            angle_boost = int(round(2.0 * normalized_offset))  # map to {-2, -1, 0, 1, 2}
+            self.vy = int(np.clip(self.vy + angle_boost, -3, 3))
+
+            self._hits += 1
+            return True
+        return False
 
     def _check_opponent_paddle_hit(self) -> None:
         """
         Check if the ball hits the opponent's (left) paddle.
 
-        The opponent always reaches the ball (ly = by).
+        The left paddle behavior is delegated to `LeftPaddleOpponent`:
+        - paddle center ly is provided by opponent.compute_paddle_center(...),
+        - bounce noise is applied by opponent.apply_bounce_noise(...).
+
         On hit: vx = +|vx|, bx = LX + 1.
-        Add random noise delta to vy: vy = clamp(vy + delta, -3, +3),
-        where delta ~ Uniform{-sigma, ..., +sigma}.
-
-        Sigma follows curriculum:
-            steps 0–50k:      sigma = 0
-            steps 50k–150k:   sigma = 1
-            steps 150k+:      sigma = 2
         """
-        raise NotImplementedError
-
-    def _get_opponent_sigma(self) -> int:
-        """
-        Return the opponent noise level sigma based on the global step count
-        (curriculum schedule).
-
-        Returns:
-            sigma: 0, 1, or 2.
-        """
-        raise NotImplementedError
+        # Opponent stub: left paddle is fixed at center and has no bounce noise.
+        self.ly = self.H // 2
+        if self.vx < 0 and self.bx <= self.LX and abs(self.by - self.ly) <= self.PH // 2:
+            self.vx = abs(self.vx)
+            self.bx = self.LX + 1
 
     def _compute_reward(self, hit: bool) -> float:
         """
@@ -171,7 +254,19 @@ class PongEnv:
         Returns:
             reward: r_sparse + r_dense.
         """
-        raise NotImplementedError
+        reward_sparse = 1.0 if hit else 0.0
+        # Agent miss: ball exited right side.
+        if self.bx >= self.W:
+            reward_sparse = -1.0
+
+        reward_dense = 0.0
+        if self.vx > 0:
+            alpha = RewardConfig.alpha_initial * max(
+                0.0, 1.0 - self._global_step / float(RewardConfig.alpha_decay_steps)
+            )
+            reward_dense = -alpha * abs(self.py - self.by) / float(self.H)
+
+        return float(reward_sparse + reward_dense)
 
     def _get_observation(self) -> np.ndarray:
         """
@@ -180,7 +275,17 @@ class PongEnv:
         Returns:
             np.array([bx/W, by/H, vx/3, vy/3, py/H], dtype=float32)
         """
-        raise NotImplementedError
+        obs = np.array(
+            [
+                self.bx / float(self.W),
+                self.by / float(self.H),
+                self.vx / 3.0,
+                self.vy / 3.0,
+                self.py / float(self.H),
+            ],
+            dtype=np.float32,
+        )
+        return obs
 
     def _check_terminal(self) -> Tuple[bool, bool]:
         """
@@ -190,14 +295,17 @@ class PongEnv:
             terminated: True if bx < 0 (agent lost) or bx >= W (opponent lost).
             truncated: True if step count >= T_MAX.
         """
-        raise NotImplementedError
+        terminated = bool(self.bx < 0 or self.bx >= self.W)
+        truncated = bool(self._step_count >= self.T_MAX)
+        return terminated, truncated
 
     def set_global_step(self, step: int) -> None:
         """
         Set the global training step counter (used for curriculum scheduling
-        of opponent sigma and dense reward alpha decay).
+        in environment dynamics, including dense reward alpha decay.
+        This step should also be forwarded to `LeftPaddleOpponent`.
 
         Args:
             step: current global training step.
         """
-        raise NotImplementedError
+        self._global_step = int(max(0, step))
