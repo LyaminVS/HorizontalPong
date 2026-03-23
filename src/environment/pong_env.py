@@ -150,7 +150,7 @@ class PongEnv:
         self._move_paddle(action)
         self._move_ball()
         hit = self._check_agent_paddle_hit()
-        self._check_opponent_paddle_hit()
+        opponent_hit = self._check_opponent_paddle_hit()
 
         reward = self._compute_reward(hit=hit)
         terminated, truncated = self._check_terminal()
@@ -166,11 +166,13 @@ class PongEnv:
 
         info = {
             "hits": self._hits,
+            "agent_hit": hit,
             "step_count": self._step_count,
             "agent_paddle_y": self.py,
             "opponent_paddle_y": self.ly,
             "opponent_stub": False,
             "rally_winner": rally_winner,
+            "opponent_hit": opponent_hit,
         }
         return self._get_observation(), reward, terminated, truncated, info
 
@@ -257,7 +259,7 @@ class PongEnv:
             return True
         return False
 
-    def _check_opponent_paddle_hit(self) -> None:
+    def _check_opponent_paddle_hit(self) -> bool:
         """
         Check if the ball hits the opponent's (left) paddle.
 
@@ -277,7 +279,7 @@ class PongEnv:
         )
         crossed_left = self._prev_bx > self.LX >= self.bx and self.vx < 0
         if not crossed_left:
-            return
+            return False
 
         dx = self.bx - self._prev_bx
         t = 0.0 if dx == 0 else (self.LX - self._prev_bx) / float(dx)
@@ -288,6 +290,8 @@ class PongEnv:
             self.vy = self._opponent.apply_bounce_noise(self.vy, self._rng)
             self.bx = self.LX + 1
             self.by = int(np.clip(round(y_cross), 0, self.H - 1))
+            return True
+        return False
 
     def _compute_reward(self, hit: bool) -> float:
         """
@@ -305,19 +309,19 @@ class PongEnv:
         Returns:
             reward: r_sparse + r_dense.
         """
-        reward_sparse = 1.0 if hit else 0.0
+        reward_sparse = 100.0 if hit else 0.0
         # Agent miss: ball exited right side.
         if self.bx >= self.W:
-            reward_sparse = -1.0
+            reward_sparse = -100.0
 
-        reward_dense = 0.0
-        if self.vx > 0:
-            alpha = RewardConfig.alpha_initial * max(
-                0.0, 1.0 - self._global_step / float(RewardConfig.alpha_decay_steps)
-            )
-            reward_dense = -alpha * abs(self.py - self.by) / float(self.H)
+        # reward_dense = 0.0
+        # if self.vx > 0:
+        #     alpha = RewardConfig.alpha_initial * max(
+        #         0.0, 1.0 - self._global_step / float(RewardConfig.alpha_decay_steps)
+        #     )
+        #     reward_dense = -alpha * abs(self.py - self.by) / float(self.H)
 
-        return float(reward_sparse + reward_dense)
+        return float(reward_sparse)
 
     def _get_observation(self) -> np.ndarray:
         """

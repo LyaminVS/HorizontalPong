@@ -63,6 +63,9 @@ class LeftPaddleOpponent:
         Returns:
             sigma: integer in {0, 1, 2}.
         """
+        if not CurriculumConfig.enabled:
+            return int(np.clip(CurriculumConfig.fixed_sigma, 0, 2))
+
         if self._global_step < CurriculumConfig.sigma_0_until:
             return 0
         if self._global_step < CurriculumConfig.sigma_1_until:

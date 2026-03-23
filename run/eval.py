@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
         "--agent", 
         type=str, 
         required=True, 
-        choices=["actor_critic", "reinforce", "reinforce_baseline"],
+        choices=["actor_critic", "reinforce", "reinforce_baseline", "trpo"],
         help="Agent type."
     )
     parser.add_argument(
@@ -74,6 +74,9 @@ def load_agent(agent_type: str, checkpoint_path: str, device: str = "cpu"):
     elif agent_type == "reinforce_baseline":
         from src.agent.reinforce_baseline import ReinforceBaselineAgent
         agent = ReinforceBaselineAgent(device=device)
+    elif agent_type == "trpo":
+        from src.agent.trpo import TRPOAgent
+        agent = TRPOAgent(device=device)
     else:
         raise ValueError(f"Unknown agent type: {agent_type}")
         
@@ -86,8 +89,14 @@ def get_deterministic_action(agent, state: np.ndarray) -> int:
     """Helper function to get the argmax action from the policy network."""
     with torch.no_grad():
         state_ts = torch.FloatTensor(state).unsqueeze(0).to(agent.device)
-        probs = agent.actor(state_ts)
-        action = torch.argmax(probs, dim=-1).item()
+        if hasattr(agent, "actor"):
+            probs = agent.actor(state_ts)
+            action = torch.argmax(probs, dim=-1).item()
+        elif hasattr(agent, "policy"):
+            logits = agent.policy(state_ts)
+            action = torch.argmax(logits, dim=-1).item()
+        else:
+            raise AttributeError("Agent has neither actor nor policy network.")
     return action
 
 
