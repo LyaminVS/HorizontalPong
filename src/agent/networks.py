@@ -1,5 +1,5 @@
 """
-Neural network architectures for Actor and Critic.
+Neural network architectures for RL agents.
 """
 
 import torch
@@ -32,9 +32,6 @@ class ActorNetwork(nn.Module):
         if isinstance(m, nn.Linear):
             nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
             nn.init.constant_(m.bias, 0.0)
-            
-            # Последний слой делаем с маленьким gain, чтобы вероятности 
-            # на старте были почти одинаковыми (равномерными)
             if m == self.net[-1]:
                 nn.init.orthogonal_(m.weight, gain=0.01)
 
@@ -42,8 +39,15 @@ class ActorNetwork(nn.Module):
         return self.net(state)
 
 
-class CriticNetwork(nn.Module):
-    """Q-value network q_hat(s, a)."""
+class ActorCriticNetwork(nn.Module):
+    """
+    Unified Actor-Critic network with shared MLP backbone.
+
+    Architecture:
+        state -> [self.net  shared MLP] -> features
+        features -> [self.actor  head]  -> action logits   (action_dim)
+        features -> [self.critic head]  -> Q(s, ·)         (action_dim)
+    """
 
     def __init__(
         self,
@@ -52,16 +56,52 @@ class CriticNetwork(nn.Module):
         hidden_dim: int = ActorCriticConfig.hidden_dim,
     ) -> None:
         super().__init__()
+        self.action_dim = action_dim
+
         self.net = nn.Sequential(
-            nn.Linear(state_dim + action_dim, hidden_dim),
+            nn.Linear(state_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, 1)
         )
-        self.action_dim = action_dim
+
+        self.actor = nn.Linear(hidden_dim, action_dim)
+        self.critic = nn.Linear(hidden_dim, action_dim)
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m: nn.Module) -> None:
+        """Ортогональная инициализация для стабильного старта RL агента."""
+        if isinstance(m, nn.Linear):
+            if m is self.actor:
+                nn.init.orthogonal_(m.weight, gain=0.01)
+            elif m is self.critic:
+                nn.init.orthogonal_(m.weight, gain=1.0)
+            else:
+                nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+            nn.init.constant_(m.bias, 0.0)
 
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
-        action_one_hot = nn.functional.one_hot(action.long(), num_classes=self.action_dim).float()
-        x = torch.cat([state, action_one_hot], dim=-1)
-        return self.net(x)
+        """
+        Q(s, a) for given state-action pairs.
+
+        Args:
+            state:  (batch, state_dim)
+            action: (batch,) integer actions
+
+        Returns:
+            Q-values of shape (batch,).
+        """
+        features = self.net(state)
+        q_all = self.critic(features)
+        return q_all.gather(1, action.long().unsqueeze(-1)).squeeze(-1)
+
+    def get_action(self, state: torch.Tensor) -> torch.Tensor:
+        """
+        Action logits for given states.
+
+        Returns:
+            Logits of shape (batch, action_dim).
+        """
+        features = self.net(state)
+        return self.actor(features)
