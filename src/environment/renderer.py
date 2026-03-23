@@ -1,30 +1,43 @@
 """
 Visualization and rendering utilities for the Pong environment.
 
-Provides real-time rendering via matplotlib and GIF/video export
-for qualitative demonstration of trained agents.
+Uses pygame for real-time window rendering and frame capture.
+Captured frames can be exported as GIF/video for qualitative demonstration.
 """
 
+import pygame
 import numpy as np
 from typing import List, Optional
 
 
 class PongRenderer:
     """
-    Renders the Pong game state for visualization and recording.
+    Renders the Pong game state using a pygame window.
 
     Supports:
-    - Frame-by-frame rendering via matplotlib.
+    - Real-time rendering in a pygame display at a configurable scale.
+    - Capturing frames as numpy arrays for recording.
     - Saving episode rollouts as GIF animations.
     """
 
-    def __init__(self, width: int = 160, height: int = 120) -> None:
+    def __init__(
+        self,
+        width: int = 160,
+        height: int = 120,
+        scale: int = 4,
+        fps: int = 60,
+    ) -> None:
         """
-        Initialize the renderer with field dimensions.
+        Initialize pygame, create a display window, and set up a clock.
+
+        The window size is (width * scale) x (height * scale) so the
+        160x120 field is clearly visible.
 
         Args:
             width: field width in pixels.
             height: field height in pixels.
+            scale: integer multiplier for the display window size.
+            fps: target frames per second for real-time rendering.
         """
         raise NotImplementedError
 
@@ -36,16 +49,44 @@ class PongRenderer:
         py_opponent: int,
         score_agent: int,
         score_opponent: int,
-    ) -> np.ndarray:
+    ) -> None:
         """
-        Draw a single game frame as a numpy RGB array.
+        Draw a single game frame onto the pygame surface and flip the display.
 
-        Draws:
+        Draws on the internal surface at native resolution, then scales
+        up to the display window.
+
+        Elements drawn:
         - Black background.
-        - White top/bottom borders.
+        - Dashed center line.
         - Left paddle (opponent) and right paddle (agent) as white rectangles.
         - Ball as a white square.
-        - Optional score overlay.
+        - Score text rendered with pygame.font at the top center.
+
+        Ticks the clock to maintain the target FPS.
+
+        Args:
+            bx, by: ball position.
+            py_agent: vertical center of the agent's paddle.
+            py_opponent: vertical center of the opponent's paddle.
+            score_agent: agent's current score (hits).
+            score_opponent: opponent's current score.
+        """
+        raise NotImplementedError
+
+    def capture_frame(
+        self,
+        bx: int,
+        by: int,
+        py_agent: int,
+        py_opponent: int,
+        score_agent: int,
+        score_opponent: int,
+    ) -> np.ndarray:
+        """
+        Draw a frame onto an off-screen surface and return it as a numpy array.
+
+        Used for recording rollouts without displaying a window.
 
         Args:
             bx, by: ball position.
@@ -55,22 +96,24 @@ class PongRenderer:
             score_opponent: opponent's current score.
 
         Returns:
-            frame: np.ndarray of shape (H, W, 3), dtype uint8.
+            frame: np.ndarray of shape (H, W, 3), dtype uint8 (RGB).
         """
         raise NotImplementedError
 
-    def show_frame(self, frame: np.ndarray) -> None:
+    def handle_events(self) -> bool:
         """
-        Display a single frame in a matplotlib window (non-blocking).
+        Process pygame events (quit, keypress, etc.).
 
-        Args:
-            frame: RGB image array of shape (H, W, 3).
+        Should be called each frame to keep the window responsive.
+
+        Returns:
+            running: False if the user closed the window, True otherwise.
         """
         raise NotImplementedError
 
     def save_gif(self, frames: List[np.ndarray], filepath: str, fps: int = 30) -> None:
         """
-        Save a sequence of frames as an animated GIF file.
+        Save a sequence of captured frames as an animated GIF file using Pillow.
 
         Args:
             frames: list of RGB arrays, each of shape (H, W, 3).
@@ -79,19 +122,8 @@ class PongRenderer:
         """
         raise NotImplementedError
 
-    def save_video(self, frames: List[np.ndarray], filepath: str, fps: int = 30) -> None:
-        """
-        Save a sequence of frames as an MP4 video file.
-
-        Args:
-            frames: list of RGB arrays, each of shape (H, W, 3).
-            filepath: output path for the video file (e.g. "artifacts/rollout.mp4").
-            fps: frames per second.
-        """
-        raise NotImplementedError
-
     def close(self) -> None:
         """
-        Close any open rendering windows and release resources.
+        Quit pygame and release all display resources.
         """
         raise NotImplementedError
