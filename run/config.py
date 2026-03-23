@@ -14,6 +14,7 @@ class EnvConfig:
     height: int = 120
     paddle_width: int = 2
     paddle_height: int = 12
+    paddle_speed: int = 1
     left_x: int = 6
     right_x: int = 153
     t_max: int = 2000

@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 
 from run.config import EnvConfig, RewardConfig
+from src.environment.opponent import LeftPaddleOpponent
 
 
 class PongEnv:
@@ -37,6 +38,7 @@ class PongEnv:
     H: int = EnvConfig.height
     PW: int = EnvConfig.paddle_width
     PH: int = EnvConfig.paddle_height
+    PADDLE_SPEED: int = EnvConfig.paddle_speed
     LX: int = EnvConfig.left_x
     RX: int = EnvConfig.right_x
     T_MAX: int = EnvConfig.t_max
@@ -62,6 +64,7 @@ class PongEnv:
         self._global_step = 0
         self._step_count = 0
         self._hits = 0
+        self._opponent = LeftPaddleOpponent()
 
         # Right paddle (agent) center.
         self.py = self.H // 2
@@ -101,7 +104,7 @@ class PongEnv:
         self._hits = 0
 
         self.py = self.H // 2
-        self.ly = self.H // 2  # static placeholder opponent
+        self.ly = self.H // 2
 
         self.bx = self.W // 2
         self.by = self.H // 2
@@ -152,7 +155,7 @@ class PongEnv:
             "step_count": self._step_count,
             "agent_paddle_y": self.py,
             "opponent_paddle_y": self.ly,
-            "opponent_stub": True,
+            "opponent_stub": False,
         }
         return self._get_observation(), reward, terminated, truncated, info
 
@@ -161,17 +164,17 @@ class PongEnv:
         Update agent's paddle vertical position based on action.
 
         Action mapping:
-            0 -> py -= 1 (up),   clamped at PH/2
-            1 -> py += 1 (down), clamped at H - 1 - PH/2
+            0 -> py -= PADDLE_SPEED (up),   clamped at PH/2
+            1 -> py += PADDLE_SPEED (down), clamped at H - 1 - PH/2
             2 -> no change
 
         Args:
             action: integer action.
         """
         if action == 0:
-            self.py -= 1
+            self.py -= self.PADDLE_SPEED
         elif action == 1:
-            self.py += 1
+            self.py += self.PADDLE_SPEED
 
         low = self.PH // 2
         high = self.H - 1 - self.PH // 2
@@ -232,10 +235,17 @@ class PongEnv:
 
         On hit: vx = +|vx|, bx = LX + 1.
         """
-        # Opponent stub: left paddle is fixed at center and has no bounce noise.
-        self.ly = self.H // 2
+        self.ly = self._opponent.compute_paddle_center(
+            current_ly=self.ly,
+            ball_x=self.bx,
+            ball_y=self.by,
+            vx=self.vx,
+            vy=self.vy,
+            target_x=self.LX,
+        )
         if self.vx < 0 and self.bx <= self.LX and abs(self.by - self.ly) <= self.PH // 2:
             self.vx = abs(self.vx)
+            self.vy = self._opponent.apply_bounce_noise(self.vy, self._rng)
             self.bx = self.LX + 1
 
     def _compute_reward(self, hit: bool) -> float:
@@ -309,3 +319,4 @@ class PongEnv:
             step: current global training step.
         """
         self._global_step = int(max(0, step))
+        self._opponent.set_global_step(self._global_step)
