@@ -60,6 +60,14 @@ class CriticNetwork(nn.Module):
             nn.Linear(hidden_dim, 1)
         )
         self.action_dim = action_dim
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m: nn.Module) -> None:
+        if isinstance(m, nn.Linear):
+            nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+            nn.init.constant_(m.bias, 0.0)
+            if m == self.net[-1]:
+                nn.init.orthogonal_(m.weight, gain=1.0)
 
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         action_one_hot = nn.functional.one_hot(action.long(), num_classes=self.action_dim).float()

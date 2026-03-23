@@ -26,14 +26,15 @@ class EnvConfig:
 
 @dataclass
 class ActorCriticConfig:
-    """Hyperparameters for the Actor-Critic agent."""
+    """Hyperparameters for the Actor-Critic agent (spec v5)."""
     state_dim: int = 5
     action_dim: int = 3
-    hidden_dim: int = 128
+    hidden_dim: int = 256
     gamma: float = 0.99
     lr_actor: float = 3e-4
     lr_critic: float = 1e-4
-    entropy_coeff: float = 0.5
+    entropy_coeff: float = 0.01
+    grad_clip_norm: float = 3.0
     buffer_capacity: int = 10_000
     batch_size: int = 64
     update_every: int = 10
