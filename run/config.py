@@ -45,6 +45,16 @@ class ReinforceConfig:
 
 
 @dataclass
+class ReinforceBaselineConfig:
+    """Hyperparameters for the REINFORCE with heuristic baseline agent."""
+    state_dim: int = 5
+    action_dim: int = 3
+    hidden_dim: int = 128
+    gamma: float = 0.99
+    lr_actor: float = 3e-4
+
+
+@dataclass
 class TrainConfig:
     """Training pipeline parameters."""
     total_steps: int = 500_000

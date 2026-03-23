@@ -1,11 +1,11 @@
 """
 Neural network architectures for Actor and Critic.
 
-Actor:  MLP  5 -> 128 -> 128 -> 3, outputs action probabilities via Softmax.
-Critic: MLP  8 -> 128 -> 128 -> 1, inputs [s_norm; one_hot(a)], outputs Q(s,a).
+Actor:    MLP  5 -> 128 -> 128 -> 3, outputs action probabilities via Softmax.
+Critic:   MLP  8 -> 128 -> 128 -> 1, inputs [s_norm; one_hot(a)], outputs Q(s,a).
 
-Both methods (Actor-Critic and REINFORCE) share the same Actor architecture
-to ensure fair comparison.
+All agents share the same ActorNetwork architecture for fair comparison.
+CriticNetwork (Q-function) is used by Actor-Critic.
 """
 
 import torch

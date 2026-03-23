@@ -1,9 +1,12 @@
 """
-Training script for Actor-Critic and REINFORCE agents on Horizontal Pong.
+Training script for RL agents on Horizontal Pong.
+
+Supported agents: actor_critic, reinforce, reinforce_baseline.
 
 Usage:
-    python -m run.train --agent actor_critic --steps 500000 --seed 42
-    python -m run.train --agent reinforce    --steps 500000 --seed 42
+    python -m run.train --agent actor_critic        --steps 500000 --seed 42
+    python -m run.train --agent reinforce           --steps 500000 --seed 42
+    python -m run.train --agent reinforce_baseline  --steps 500000 --seed 42
 
 Saves model checkpoints and training logs (CSV) to artifacts/.
 """
@@ -15,7 +18,13 @@ from typing import Dict, List
 from src.environment.pong_env import PongEnv
 from src.agent.actor_critic import ActorCriticAgent
 from src.agent.reinforce import ReinforceAgent
-from run.config import TrainConfig, ActorCriticConfig, ReinforceConfig
+from src.agent.reinforce_baseline import ReinforceBaselineAgent
+from run.config import (
+    TrainConfig,
+    ActorCriticConfig,
+    ReinforceConfig,
+    ReinforceBaselineConfig,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -23,7 +32,8 @@ def parse_args() -> argparse.Namespace:
     Parse command-line arguments for the training script.
 
     Arguments:
-        --agent:  agent type, one of {"actor_critic", "reinforce"}.
+        --agent:  agent type, one of {"actor_critic", "reinforce",
+                  "reinforce_baseline"}.
         --steps:  total number of environment steps (default 500_000).
         --seed:   random seed for reproducibility (default 42).
         --device: torch device, "cpu" or "cuda" (default "cpu").
@@ -49,12 +59,13 @@ def create_agent(agent_type: str, config: Dict, device: str):
     Factory function: instantiate the appropriate agent based on type string.
 
     Args:
-        agent_type: "actor_critic" or "reinforce".
+        agent_type: one of {"actor_critic", "reinforce", "reinforce_baseline"}.
         config: dict of hyperparameters from the corresponding config dataclass.
         device: torch device string.
 
     Returns:
-        An instance of ActorCriticAgent or ReinforceAgent.
+        An instance of ActorCriticAgent, ReinforceAgent,
+        or ReinforceBaselineAgent.
     """
     raise NotImplementedError
 
@@ -111,6 +122,38 @@ def train_reinforce(
 
     Returns:
         history: dict with same keys as train_actor_critic.
+    """
+    raise NotImplementedError
+
+
+def train_reinforce_baseline(
+    env: PongEnv, agent: ReinforceBaselineAgent, total_steps: int, config: TrainConfig
+) -> Dict[str, List]:
+    """
+    Training loop for the REINFORCE with baseline agent.
+
+    Same episodic structure as vanilla REINFORCE, but the agent also
+    subtracts a heuristic baseline b(s) from the returns.
+
+    For each episode:
+        1. Reset environment.
+        2. Collect full trajectory: select actions, store states and rewards.
+        3. After episode ends: compute returns G_t, compute baselines, update actor.
+        4. Log metrics.
+        5. Repeat until total_steps exhausted.
+
+    Args:
+        env: PongEnv instance.
+        agent: ReinforceBaselineAgent instance.
+        total_steps: total environment steps to train for.
+        config: TrainConfig with logging/saving intervals.
+
+    Returns:
+        history: dict with keys:
+            "episode_rewards": list of total rewards per episode.
+            "episode_hits": list of ball hits per episode.
+            "episode_lengths": list of episode step counts.
+            "actor_losses": list of actor loss values.
     """
     raise NotImplementedError
 

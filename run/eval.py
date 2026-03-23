@@ -1,12 +1,15 @@
 """
-Evaluation script for trained Actor-Critic and REINFORCE agents.
+Evaluation script for trained RL agents on Horizontal Pong.
+
+Supported agents: actor_critic, reinforce, reinforce_baseline.
 
 Loads a saved model checkpoint, runs evaluation episodes, computes
 performance metrics, and optionally records a GIF rollout.
 
 Usage:
-    python -m run.eval --agent actor_critic --checkpoint artifacts/ac_model.pt --episodes 100
-    python -m run.eval --agent reinforce    --checkpoint artifacts/reinforce_model.pt --episodes 100
+    python -m run.eval --agent actor_critic        --checkpoint artifacts/ac_model.pt
+    python -m run.eval --agent reinforce           --checkpoint artifacts/reinforce_model.pt
+    python -m run.eval --agent reinforce_baseline  --checkpoint artifacts/reinforce_bl_model.pt
 """
 
 import argparse
@@ -17,6 +20,7 @@ from src.environment.pong_env import PongEnv
 from src.environment.renderer import PongRenderer
 from src.agent.actor_critic import ActorCriticAgent
 from src.agent.reinforce import ReinforceAgent
+from src.agent.reinforce_baseline import ReinforceBaselineAgent
 from run.config import EvalConfig
 
 
@@ -25,7 +29,8 @@ def parse_args() -> argparse.Namespace:
     Parse command-line arguments for the evaluation script.
 
     Arguments:
-        --agent:      agent type, one of {"actor_critic", "reinforce"}.
+        --agent:      agent type, one of {"actor_critic", "reinforce",
+                      "reinforce_baseline"}.
         --checkpoint: path to the saved model checkpoint.
         --episodes:   number of evaluation episodes (default 100).
         --seed:       random seed (default 123).
@@ -43,7 +48,7 @@ def load_agent(agent_type: str, checkpoint_path: str, device: str = "cpu"):
     Instantiate the agent and load weights from a checkpoint file.
 
     Args:
-        agent_type: "actor_critic" or "reinforce".
+        agent_type: one of {"actor_critic", "reinforce", "reinforce_baseline"}.
         checkpoint_path: path to the .pt checkpoint file.
         device: torch device string.
 
