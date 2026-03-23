@@ -13,11 +13,9 @@ from typing import Dict, List
 from src.environment.pong_env import PongEnv
 from src.agent.reinforce import ReinforceAgent
 from src.agent.trpo import TRPOAgent
-# Import other agents when implemented
-# from src.agent.actor_critic import ActorCriticAgent
-# from src.agent.reinforce_baseline import ReinforceBaselineAgent
+from src.agent.actor_critic import ActorCriticAgent
 
-from run.config import TrainConfig, ReinforceConfig, TRPOConfig
+from run.config import TrainConfig, ReinforceConfig, TRPOConfig, ActorCriticConfig
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,7 +70,23 @@ def create_agent(agent_type: str, device: str):
             backtrack_coeff=config.backtrack_coeff,
             device=device,
         )
-    # elif agent_type == "actor_critic": ...
+    if agent_type == "actor_critic":
+        config = ActorCriticConfig()
+        return ActorCriticAgent(
+            state_dim=config.state_dim,
+            action_dim=config.action_dim,
+            hidden_dim=config.hidden_dim,
+            gamma=config.gamma,
+            lr=config.lr,
+            critic_coeff=config.critic_coeff,
+            entropy_coeff=config.entropy_coeff,
+            use_entropy=config.use_entropy,
+            grad_clip_norm=config.grad_clip_norm,
+            buffer_capacity=config.buffer_capacity,
+            batch_size=config.batch_size,
+            update_every=config.update_every,
+            device=device,
+        )
     # elif agent_type == "reinforce_baseline": ...
     else:
         raise ValueError(f"Unknown agent type: {agent_type}")
@@ -215,6 +229,86 @@ def train_trpo(env: PongEnv, agent: TRPOAgent, total_steps: int, config: TrainCo
     return history
 
 
+def train_actor_critic(
+    env: PongEnv, agent: ActorCriticAgent, total_steps: int, config: TrainConfig
+) -> Dict[str, List]: # Has not been checked yet.
+    history: Dict[str, List] = {
+        "episode": [], "reward": [], "hits": [], "length": [],
+        "critic_loss": [], "actor_loss": [], "entropy_loss": [], "total_loss": [],
+        "grad_norm": [],
+    }
+
+    global_step = 0
+    episodes = 0
+    last_update_info: Dict[str, float] = {}
+
+    print(f"Starting Actor-Critic training for {total_steps} steps...")
+
+    state = env.reset()
+    ep_reward = 0.0
+    ep_steps = 0
+    ep_hits = 0
+
+    while global_step < total_steps:
+        action = agent.select_action(state)
+        next_state, reward, terminated, truncated, info = env.step(action)
+
+        agent.store_transition(state, action, reward, next_state, terminated)
+
+        state = next_state
+        ep_reward += reward
+        ep_steps += 1
+        if info.get("agent_hit", False):
+            ep_hits += 1
+        global_step += 1
+
+        update_info = agent.update(global_step)
+        if update_info is not None:
+            last_update_info = update_info
+
+        short_done = config.short_episode_on_opponent_hit and info.get("opponent_hit", False)
+        env_done = terminated or truncated
+        episode_done = short_done or env_done or (global_step >= total_steps)
+
+        if not episode_done:
+            continue
+
+        episodes += 1
+
+        history["episode"].append(episodes)
+        history["reward"].append(ep_reward)
+        history["hits"].append(ep_hits)
+        history["length"].append(ep_steps)
+        history["critic_loss"].append(last_update_info.get("critic_loss", 0.0))
+        history["actor_loss"].append(last_update_info.get("actor_loss", 0.0))
+        history["entropy_loss"].append(last_update_info.get("entropy_loss", 0.0))
+        history["total_loss"].append(last_update_info.get("total_loss", 0.0))
+        history["grad_norm"].append(last_update_info.get("grad_norm", 0.0))
+
+        if episodes % config.log_interval == 0:
+            avg_rew = np.mean(history["reward"][-config.log_interval:])
+            avg_hits = np.mean(history["hits"][-config.log_interval:])
+            print(
+                f"Step: {global_step}/{total_steps} | Episode: {episodes} | "
+                f"Avg Reward: {avg_rew:.3f} | Avg Hits: {avg_hits:.2f} | "
+                f"Critic: {last_update_info.get('critic_loss', 0.0):.4f} | "
+                f"Actor: {last_update_info.get('actor_loss', 0.0):.4f} | "
+                f"Entropy: {last_update_info.get('entropy_loss', 0.0):.4f} | "
+                f"GradNorm: {last_update_info.get('grad_norm', 0.0):.4f}"
+            )
+
+        if global_step % config.save_interval == 0 or global_step >= total_steps:
+            save_checkpoint(agent, config.artifacts_dir, args.agent, global_step)
+
+        if env_done:
+            state = env.reset()
+        ep_reward = 0.0
+        ep_steps = 0
+        ep_hits = 0
+
+    return history
+
+
 def save_training_log(history: Dict[str, List], filepath: str) -> None:
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     df = pd.DataFrame(history)
@@ -256,6 +350,8 @@ def main() -> None:
         history = train_reinforce(env, agent, args.steps, train_config)
     elif args.agent == "trpo":
         history = train_trpo(env, agent, args.steps, train_config)
+    elif args.agent == "actor_critic":
+        history = train_actor_critic(env, agent, args.steps, train_config)
     else:
         raise NotImplementedError(f"Training loop for {args.agent} is not yet implemented.")
         

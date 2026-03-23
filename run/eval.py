@@ -89,14 +89,17 @@ def get_deterministic_action(agent, state: np.ndarray) -> int:
     """Helper function to get the argmax action from the policy network."""
     with torch.no_grad():
         state_ts = torch.FloatTensor(state).unsqueeze(0).to(agent.device)
-        if hasattr(agent, "actor"):
-            probs = agent.actor(state_ts)
-            action = torch.argmax(probs, dim=-1).item()
+        if hasattr(agent, "network"):
+            logits = agent.network.get_action(state_ts)
+            action = torch.argmax(logits, dim=-1).item()
+        elif hasattr(agent, "actor"):
+            logits = agent.actor(state_ts)
+            action = torch.argmax(logits, dim=-1).item()
         elif hasattr(agent, "policy"):
             logits = agent.policy(state_ts)
             action = torch.argmax(logits, dim=-1).item()
         else:
-            raise AttributeError("Agent has neither actor nor policy network.")
+            raise AttributeError("Agent has no recognized policy network attribute.")
     return action
 
 

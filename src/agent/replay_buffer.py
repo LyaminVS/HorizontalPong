@@ -1,23 +1,21 @@
 """
-Replay buffer for off-policy training of the Critic in Actor-Critic.
+Replay buffer for off-policy Actor-Critic training.
 
-Stores SARSA-style transitions (s, a, r, s', a') and supports
-uniform random sampling of mini-batches.
-
-Capacity M = 10,000 transitions (configurable).
+Stores transitions (s, a, r, s', done) in a fixed-size circular buffer
+and supports uniform random mini-batch sampling.
 """
 
 import numpy as np
-from typing import Tuple, Dict
+from typing import Dict
 from run.config import ActorCriticConfig
 
 
 class ReplayBuffer:
     """
-    Fixed-size circular replay buffer storing (s, a, r, s_next, a_next) transitions.
+    Fixed-size circular replay buffer.
 
     Attributes:
-        capacity: maximum number of transitions to store (default 10_000).
+        capacity: maximum number of stored transitions.
         size: current number of stored transitions.
     """
 
@@ -26,14 +24,15 @@ class ReplayBuffer:
         capacity: int = ActorCriticConfig.buffer_capacity,
         state_dim: int = ActorCriticConfig.state_dim,
     ) -> None:
-        """
-        Allocate pre-sized numpy arrays for each component of the transition.
+        self.capacity = capacity
+        self.size = 0
+        self._pos = 0
 
-        Args:
-            capacity: maximum buffer size M.
-            state_dim: dimensionality of the state vector.
-        """
-        raise NotImplementedError
+        self.states = np.zeros((capacity, state_dim), dtype=np.float32)
+        self.actions = np.zeros(capacity, dtype=np.int64)
+        self.rewards = np.zeros(capacity, dtype=np.float32)
+        self.next_states = np.zeros((capacity, state_dim), dtype=np.float32)
+        self.dones = np.zeros(capacity, dtype=np.float32)
 
     def push(
         self,
@@ -41,41 +40,30 @@ class ReplayBuffer:
         action: int,
         reward: float,
         next_state: np.ndarray,
-        next_action: int,
+        done: bool,
     ) -> None:
-        """
-        Add a single SARSA transition (s, a, r, s', a') to the buffer.
+        """Add a single transition; overwrites oldest entry when full."""
+        self.states[self._pos] = state
+        self.actions[self._pos] = action
+        self.rewards[self._pos] = reward
+        self.next_states[self._pos] = next_state
+        self.dones[self._pos] = float(done)
 
-        Overwrites the oldest entry when the buffer is full (circular).
+        self._pos = (self._pos + 1) % self.capacity
+        self.size = min(self.size + 1, self.capacity)
 
-        Args:
-            state: normalized state vector (5,).
-            action: integer action taken.
-            reward: received reward.
-            next_state: normalized next state vector (5,).
-            next_action: action taken in the next state.
-        """
-        raise NotImplementedError
-
-    def sample(self, batch_size: int = ActorCriticConfig.batch_size) -> Dict[str, np.ndarray]:
-        """
-        Sample a random mini-batch of transitions.
-
-        Args:
-            batch_size: number of transitions to sample (B=64).
-
-        Returns:
-            dict with keys:
-                "states":       np.ndarray (batch_size, state_dim)
-                "actions":      np.ndarray (batch_size,)  int
-                "rewards":      np.ndarray (batch_size,)  float
-                "next_states":  np.ndarray (batch_size, state_dim)
-                "next_actions": np.ndarray (batch_size,)  int
-        """
-        raise NotImplementedError
+    def sample(
+        self, batch_size: int = ActorCriticConfig.batch_size
+    ) -> Dict[str, np.ndarray]:
+        """Uniform random mini-batch of transitions."""
+        idx = np.random.randint(0, self.size, size=batch_size)
+        return {
+            "states": self.states[idx],
+            "actions": self.actions[idx],
+            "rewards": self.rewards[idx],
+            "next_states": self.next_states[idx],
+            "dones": self.dones[idx],
+        }
 
     def __len__(self) -> int:
-        """
-        Return the current number of stored transitions.
-        """
-        raise NotImplementedError
+        return self.size
