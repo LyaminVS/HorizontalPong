@@ -41,6 +41,8 @@ class PongEnv:
     PADDLE_SPEED: int = EnvConfig.paddle_speed
     MAX_BALL_SPEED_X: int = EnvConfig.max_ball_speed_x
     MAX_BALL_SPEED_Y: int = EnvConfig.max_ball_speed_y
+    RANDOM_BOUNCE_PROB: float = EnvConfig.random_bounce_prob
+    RANDOM_BOUNCE_DELTA: int = EnvConfig.random_bounce_delta
     LX: int = EnvConfig.left_x
     RX: int = EnvConfig.right_x
     T_MAX: int = EnvConfig.t_max
@@ -254,6 +256,7 @@ class PongEnv:
                     self.vy + angle_boost, -self.MAX_BALL_SPEED_Y, self.MAX_BALL_SPEED_Y
                 )
             )
+            self._apply_random_bounce_noise()
 
             self._hits += 1
             return True
@@ -288,6 +291,7 @@ class PongEnv:
         if abs(y_cross - self.ly) <= self.PH / 2.0:
             self.vx = abs(self.vx)
             self.vy = self._opponent.apply_bounce_noise(self.vy, self._rng)
+            self._apply_random_bounce_noise()
             self.bx = self.LX + 1
             self.by = int(np.clip(round(y_cross), 0, self.H - 1))
             return True
@@ -372,3 +376,14 @@ class PongEnv:
         vx_abs = int(self._rng.integers(1, max_vx + 1))
         sign = int(self._rng.choice([-1, 1]))
         return sign * vx_abs
+
+    def _apply_random_bounce_noise(self) -> None:
+        """With small probability, add random delta to vy after paddle bounce."""
+        if self.RANDOM_BOUNCE_PROB <= 0.0:
+            return
+        if float(self._rng.random()) < self.RANDOM_BOUNCE_PROB:
+            delta_max = max(1, int(self.RANDOM_BOUNCE_DELTA))
+            delta = int(self._rng.integers(-delta_max, delta_max + 1))
+            self.vy = int(
+                np.clip(self.vy + delta, -self.MAX_BALL_SPEED_Y, self.MAX_BALL_SPEED_Y)
+            )

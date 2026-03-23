@@ -121,7 +121,7 @@ def evaluate(
 
             state, reward, terminated, truncated, info = env.step(action)
             ep_reward += reward
-            done = terminated or truncated
+            done = terminated
 
         rewards.append(ep_reward)
         hits.append(info["hits"])
@@ -150,7 +150,7 @@ def record_rollout(
     while not done:
         action = get_deterministic_action(agent, state)
         state, reward, terminated, truncated, info = env.step(action)
-        done = terminated or truncated
+        done = terminated
 
         frame = renderer.capture_frame(
             bx=env.bx,
@@ -207,7 +207,7 @@ def main() -> None:
                 app_running = renderer.handle_events()
                 action = get_deterministic_action(agent, state)
                 state, reward, terminated, truncated, info = env.step(action)
-                done = terminated or truncated
+                done = terminated
                 
                 renderer.render_frame(
                     bx=env.bx,

@@ -14,9 +14,11 @@ class EnvConfig:
     height: int = 64
     paddle_width: int = 2
     paddle_height: int = 12
-    paddle_speed: int = 1
-    max_ball_speed_x: int = 1
-    max_ball_speed_y: int = 1
+    paddle_speed: int = 2
+    max_ball_speed_x: int = 2
+    max_ball_speed_y: int = 2
+    random_bounce_prob: float = 0.1
+    random_bounce_delta: int = 1
     left_x: int = 6
     right_x: int = 79
     t_max: int = 2000
@@ -89,7 +91,7 @@ class TrainConfig:
 class EvalConfig:
     """Evaluation pipeline parameters."""
     num_episodes: int = 100
-    seed: int = 123
+    seed: int = 1233142
     render: bool = False
     save_gif: bool = True
     device: str = "cpu"
