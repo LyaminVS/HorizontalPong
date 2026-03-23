@@ -242,6 +242,7 @@ def main() -> None:
     
     env = PongEnv()
     env.seed(args.seed)
+    env.set_random_bounce(False)
     
     train_config = TrainConfig(total_steps=args.steps, seed=args.seed, device=args.device)
     agent = create_agent(args.agent, args.device)

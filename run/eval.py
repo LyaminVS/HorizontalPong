@@ -185,6 +185,7 @@ def main() -> None:
     # Environment setup
     env = PongEnv()
     env.seed(args.seed)
+    env.set_random_bounce(True)
     
     # During evaluation we want the hardest opponent level (sigma=2)
     # So we simulate being late in the training process

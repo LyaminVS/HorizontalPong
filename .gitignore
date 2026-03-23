@@ -1,0 +1,38 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# OS / editor junk
+.DS_Store
+.idea/
+.vscode/
+
+# Training artifacts
+artifacts/*
+!artifacts/.gitkeep
+
+# Logs / checkpoints
+*.log
+*.pt
+*.pth
+*.ckpt
+*.csv
+

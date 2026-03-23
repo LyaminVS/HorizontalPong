@@ -69,6 +69,7 @@ class PongEnv:
         self._step_count = 0
         self._hits = 0
         self._opponent = LeftPaddleOpponent()
+        self._random_bounce_enabled = False
 
         # Right paddle (agent) center.
         self.py = self.H // 2
@@ -379,6 +380,8 @@ class PongEnv:
 
     def _apply_random_bounce_noise(self) -> None:
         """With small probability, add random delta to vy after paddle bounce."""
+        if not self._random_bounce_enabled:
+            return
         if self.RANDOM_BOUNCE_PROB <= 0.0:
             return
         if float(self._rng.random()) < self.RANDOM_BOUNCE_PROB:
@@ -387,3 +390,7 @@ class PongEnv:
             self.vy = int(
                 np.clip(self.vy + delta, -self.MAX_BALL_SPEED_Y, self.MAX_BALL_SPEED_Y)
             )
+
+    def set_random_bounce(self, enabled: bool) -> None:
+        """Enable/disable stochastic paddle-bounce perturbation."""
+        self._random_bounce_enabled = bool(enabled)
