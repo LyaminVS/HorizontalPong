@@ -7,83 +7,124 @@ Loads a saved model checkpoint, runs evaluation episodes, computes
 performance metrics, and optionally records a GIF rollout.
 
 Usage:
-    python -m run.eval --agent actor_critic        --checkpoint artifacts/ac_model.pt
-    python -m run.eval --agent reinforce           --checkpoint artifacts/reinforce_model.pt
-    python -m run.eval --agent reinforce_baseline  --checkpoint artifacts/reinforce_bl_model.pt
+    python -m run.eval --agent reinforce --checkpoint artifacts/reinforce_model.pt
+    python -m run.eval --agent reinforce --checkpoint artifacts/reinforce_model.pt --render
+    python -m run.eval --agent reinforce --checkpoint artifacts/reinforce_model.pt --save-gif
 """
 
 import argparse
 import numpy as np
+import torch
 from typing import Dict, List
 
 from src.environment.pong_env import PongEnv
 from src.environment.renderer import PongRenderer
-from src.agent.actor_critic import ActorCriticAgent
-from src.agent.reinforce import ReinforceAgent
-from src.agent.reinforce_baseline import ReinforceBaselineAgent
 from run.config import EvalConfig
 
 
 def parse_args() -> argparse.Namespace:
-    """
-    Parse command-line arguments for the evaluation script.
-
-    Arguments:
-        --agent:      agent type, one of {"actor_critic", "reinforce",
-                      "reinforce_baseline"}.
-        --checkpoint: path to the saved model checkpoint.
-        --episodes:   number of evaluation episodes (default 100).
-        --seed:       random seed (default 123).
-        --render:     flag to enable live rendering.
-        --save-gif:   flag to save a GIF of one rollout.
-
-    Returns:
-        Parsed argparse.Namespace.
-    """
-    raise NotImplementedError
+    """Parse command-line arguments for the evaluation script."""
+    parser = argparse.ArgumentParser(description="Evaluate trained RL agents on Pong.")
+    parser.add_argument(
+        "--agent", 
+        type=str, 
+        required=True, 
+        choices=["actor_critic", "reinforce", "reinforce_baseline"],
+        help="Agent type."
+    )
+    parser.add_argument(
+        "--checkpoint", 
+        type=str, 
+        required=True,
+        help="Path to the saved model checkpoint (.pt)."
+    )
+    parser.add_argument(
+        "--episodes", 
+        type=int, 
+        default=EvalConfig.num_episodes,
+        help="Number of evaluation episodes."
+    )
+    parser.add_argument(
+        "--seed", 
+        type=int, 
+        default=EvalConfig.seed,
+        help="Random seed."
+    )
+    parser.add_argument(
+        "--render", 
+        action="store_true",
+        help="Flag to enable live pygame rendering."
+    )
+    parser.add_argument(
+        "--save-gif", 
+        action="store_true",
+        help="Flag to save a GIF of one rollout."
+    )
+    return parser.parse_args()
 
 
 def load_agent(agent_type: str, checkpoint_path: str, device: str = "cpu"):
-    """
-    Instantiate the agent and load weights from a checkpoint file.
+    """Instantiate the agent and load weights from a checkpoint file."""
+    if agent_type == "reinforce":
+        from src.agent.reinforce import ReinforceAgent
+        agent = ReinforceAgent(device=device)
+    elif agent_type == "actor_critic":
+        from src.agent.actor_critic import ActorCriticAgent
+        agent = ActorCriticAgent(device=device)
+    elif agent_type == "reinforce_baseline":
+        from src.agent.reinforce_baseline import ReinforceBaselineAgent
+        agent = ReinforceBaselineAgent(device=device)
+    else:
+        raise ValueError(f"Unknown agent type: {agent_type}")
+        
+    print(f"Loading checkpoint from: {checkpoint_path}")
+    agent.load(checkpoint_path)
+    return agent
 
-    Args:
-        agent_type: one of {"actor_critic", "reinforce", "reinforce_baseline"}.
-        checkpoint_path: path to the .pt checkpoint file.
-        device: torch device string.
 
-    Returns:
-        Agent instance with loaded weights.
-    """
-    raise NotImplementedError
+def get_deterministic_action(agent, state: np.ndarray) -> int:
+    """Helper function to get the argmax action from the policy network."""
+    with torch.no_grad():
+        state_ts = torch.FloatTensor(state).unsqueeze(0).to(agent.device)
+        probs = agent.actor(state_ts)
+        action = torch.argmax(probs, dim=-1).item()
+    return action
 
 
 def evaluate(
     env: PongEnv, agent, num_episodes: int, deterministic: bool = True
 ) -> Dict[str, float]:
-    """
-    Run evaluation episodes and compute aggregate metrics.
+    """Run evaluation episodes and compute aggregate metrics."""
+    rewards = []
+    hits = []
+    lengths = []
 
-    For each episode:
-        1. Reset environment.
-        2. Run policy until termination/truncation (greedy or stochastic).
-        3. Collect episode reward, hits, and length.
+    for ep in range(num_episodes):
+        state = env.reset()
+        done = False
+        ep_reward = 0.0
 
-    Args:
-        env: PongEnv instance.
-        agent: agent with a select_action method.
-        num_episodes: number of episodes to evaluate.
-        deterministic: if True, use argmax action instead of sampling.
+        while not done:
+            if deterministic:
+                action = get_deterministic_action(agent, state)
+            else:
+                action = agent.select_action(state)
 
-    Returns:
-        metrics: dict with keys:
-            "mean_reward": average total reward per episode.
-            "std_reward": standard deviation of rewards.
-            "mean_hits": average number of ball hits per episode.
-            "mean_length": average episode length.
-            "max_hits": maximum hits in a single episode.
-    """
-    raise NotImplementedError
+            state, reward, terminated, truncated, info = env.step(action)
+            ep_reward += reward
+            done = terminated or truncated
+
+        rewards.append(ep_reward)
+        hits.append(info["hits"])
+        lengths.append(info["step_count"])
+
+    return {
+        "mean_reward": float(np.mean(rewards)),
+        "std_reward": float(np.std(rewards)),
+        "mean_hits": float(np.mean(hits)),
+        "mean_length": float(np.mean(lengths)),
+        "max_hits": float(np.max(hits)),
+    }
 
 
 def record_rollout(
@@ -92,35 +133,96 @@ def record_rollout(
     renderer: PongRenderer,
     filepath: str = "artifacts/rollout.gif",
 ) -> None:
-    """
-    Record a single evaluation episode and save as a GIF.
+    """Record a single evaluation episode and save as a GIF."""
+    state = env.reset()
+    done = False
+    frames = []
 
-    Args:
-        env: PongEnv instance.
-        agent: agent with a select_action method.
-        renderer: PongRenderer instance for frame generation.
-        filepath: output path for the GIF file.
-    """
-    raise NotImplementedError
+    while not done:
+        action = get_deterministic_action(agent, state)
+        state, reward, terminated, truncated, info = env.step(action)
+        done = terminated or truncated
+
+        frame = renderer.capture_frame(
+            bx=env.bx,
+            by=env.by,
+            py_agent=env.py,
+            py_opponent=env.ly,
+            score_agent=info["hits"],
+            score_opponent=0,
+        )
+        frames.append(frame)
+
+    renderer.save_gif(frames, filepath)
+    print(f"Rollout saved successfully to {filepath}")
 
 
 def print_metrics(metrics: Dict[str, float], agent_type: str) -> None:
-    """
-    Print evaluation metrics to stdout in a formatted table.
-
-    Args:
-        metrics: evaluation metrics dict.
-        agent_type: string name of the agent for display.
-    """
-    raise NotImplementedError
+    """Print evaluation metrics to stdout in a formatted table."""
+    print("=" * 40)
+    print(f" Evaluation Metrics: {agent_type.upper()}")
+    print("=" * 40)
+    print(f" Mean Reward:  {metrics['mean_reward']:.3f} ± {metrics['std_reward']:.3f}")
+    print(f" Mean Hits:    {metrics['mean_hits']:.2f}")
+    print(f" Max Hits:     {metrics['max_hits']:.0f}")
+    print(f" Mean Length:  {metrics['mean_length']:.1f} steps")
+    print("=" * 40)
 
 
 def main() -> None:
-    """
-    Entry point: parse arguments, load agent, run evaluation,
-    print metrics, and optionally save rollout GIF.
-    """
-    raise NotImplementedError
+    """Entry point for the evaluation script."""
+    args = parse_args()
+    
+    # Environment setup
+    env = PongEnv()
+    env.seed(args.seed)
+    
+    # During evaluation we want the hardest opponent level (sigma=2)
+    # So we simulate being late in the training process
+    env.set_global_step(200_000) 
+    
+    # Load model
+    agent = load_agent(args.agent, args.checkpoint)
+
+    # Mode 1: Live Rendering
+    if args.render:
+        print("Starting live rendering... Close the game window to stop.")
+        renderer = PongRenderer()
+        app_running = True
+        
+        while app_running:
+            state = env.reset()
+            done = False
+            
+            while not done and app_running:
+                app_running = renderer.handle_events()
+                action = get_deterministic_action(agent, state)
+                state, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
+                
+                renderer.render_frame(
+                    bx=env.bx,
+                    by=env.by,
+                    py_agent=env.py,
+                    py_opponent=env.ly,
+                    score_agent=info["hits"],
+                    score_opponent=0,
+                )
+        renderer.close()
+
+    # Mode 2: Silent Evaluation Metrics
+    else:
+        print(f"Running evaluation over {args.episodes} episodes...")
+        metrics = evaluate(env, agent, args.episodes, deterministic=True)
+        print_metrics(metrics, args.agent)
+
+    # Mode 3: Save a GIF
+    if args.save_gif:
+        print("Recording a GIF rollout...")
+        renderer = PongRenderer()
+        gif_path = f"artifacts/{args.agent}_rollout.gif"
+        record_rollout(env, agent, renderer, filepath=gif_path)
+        renderer.close()
 
 
 if __name__ == "__main__":

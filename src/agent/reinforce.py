@@ -1,31 +1,18 @@
 """
 REINFORCE (Monte Carlo Policy Gradient) agent.
-
-Uses the same ActorNetwork MLP(5->128->128->3) as Actor-Critic
-for fair comparison. No critic, no replay buffer.
-
-Update: after each complete episode using accumulated returns:
-    G_t = sum_{k=0}^{T-t} gamma^k * r_{t+k}
-    L = -sum_t log pi(a_t | s_t) * G_t
 """
 
 import torch
 import numpy as np
 from typing import Dict, List
+from torch.distributions import Categorical
 
 from src.agent.networks import ActorNetwork
 from run.config import ReinforceConfig
 
 
 class ReinforceAgent:
-    """
-    REINFORCE agent with Monte Carlo return estimation.
-
-    Attributes:
-        actor: ActorNetwork instance (shared architecture with Actor-Critic).
-        gamma: discount factor (0.99).
-        lr_actor: learning rate (3e-4, same as Actor-Critic for fair comparison).
-    """
+    """REINFORCE agent with Monte Carlo return estimation."""
 
     def __init__(
         self,
@@ -36,87 +23,80 @@ class ReinforceAgent:
         lr_actor: float = ReinforceConfig.lr_actor,
         device: str = "cpu",
     ) -> None:
-        """
-        Initialize actor network, Adam optimizer, and episode trajectory storage.
+        self.gamma = gamma
+        self.device = torch.device(device)
+        
+        self.actor = ActorNetwork(state_dim, hidden_dim, action_dim).to(self.device)
+        self.optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr_actor)
 
-        Args:
-            state_dim: state vector dimensionality.
-            action_dim: number of discrete actions.
-            hidden_dim: hidden layer size.
-            gamma: discount factor.
-            lr_actor: learning rate for Adam optimizer.
-            device: torch device ("cpu" or "cuda").
-        """
-        raise NotImplementedError
+        # Buffers
+        self.log_probs: List[torch.Tensor] = []
+        self.entropies: List[torch.Tensor] = []
+        self.rewards: List[float] = []
 
     def select_action(self, state: np.ndarray) -> int:
-        """
-        Sample an action from the current policy pi(a | s).
-
-        Also stores the log-probability of the selected action for the
-        subsequent policy gradient update.
-
-        Args:
-            state: normalized state vector (5,).
-
-        Returns:
-            action: sampled integer action.
-        """
-        raise NotImplementedError
+        state_ts = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        
+        logits = self.actor(state_ts)
+        dist = Categorical(logits=logits)
+        action = dist.sample()
+        
+        self.log_probs.append(dist.log_prob(action))
+        self.entropies.append(dist.entropy())
+        
+        return action.item()
 
     def store_reward(self, reward: float) -> None:
-        """
-        Append the reward received at the current step to the episode trajectory.
-
-        Args:
-            reward: scalar reward.
-        """
-        raise NotImplementedError
+        self.rewards.append(reward)
 
     def update(self) -> Dict[str, float]:
-        """
-        Compute the REINFORCE policy gradient update after a complete episode.
+        if len(self.rewards) == 0:
+            return {"actor_loss": 0.0}
 
-        1. Compute discounted returns G_t for each step t:
-           G_t = sum_{k=0}^{T-t} gamma^k * r_{t+k}
-        2. Normalize returns (subtract mean, divide by std) for stability.
-        3. Compute loss: L = -sum_t log pi(a_t | s_t) * G_t.
-        4. Backpropagate and update actor weights.
-        5. Clear the episode trajectory buffers.
+        returns = self._compute_returns(self.rewards)
+        returns_ts = torch.FloatTensor(returns).to(self.device)
+        
+        # НИКАКОЙ НОРМАЛИЗАЦИИ! Используем чистый Return.
 
-        Returns:
-            dict with "actor_loss": scalar loss value.
-        """
-        raise NotImplementedError
+        policy_loss = []
+        entropy_bonus = []
+        
+        for log_prob, G_t, entropy in zip(self.log_probs, returns_ts, self.entropies):
+            policy_loss.append(-log_prob * G_t)
+            entropy_bonus.append(entropy)
+            
+        # Используем .sum() ! Длинный успешный эпизод должен давать сильный сигнал
+        policy_loss_sum = torch.stack(policy_loss).sum()
+        entropy_loss_sum = torch.stack(entropy_bonus).sum()
+        
+        beta = 0.01  # Коэффициент энтропии
+        loss = policy_loss_sum - beta * entropy_loss_sum
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        
+        # Клиппинг градиентов для защиты от слишком длинных эпизодов
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=10.0)
+        
+        self.optimizer.step()
+
+        # Очищаем буферы
+        self.log_probs.clear()
+        self.entropies.clear()
+        self.rewards.clear()
+
+        return {"actor_loss": loss.item()}
 
     def _compute_returns(self, rewards: List[float]) -> List[float]:
-        """
-        Compute discounted cumulative returns from a list of rewards.
-
-        G_t = r_t + gamma * r_{t+1} + gamma^2 * r_{t+2} + ...
-
-        Args:
-            rewards: list of rewards [r_0, r_1, ..., r_{T-1}].
-
-        Returns:
-            list of discounted returns [G_0, G_1, ..., G_{T-1}].
-        """
-        raise NotImplementedError
+        returns = []
+        G = 0.0
+        for r in reversed(rewards):
+            G = r + self.gamma * G
+            returns.insert(0, G)
+        return returns
 
     def save(self, filepath: str) -> None:
-        """
-        Save actor network weights to a file.
-
-        Args:
-            filepath: path to the checkpoint file (e.g. "artifacts/reinforce_model.pt").
-        """
-        raise NotImplementedError
+        torch.save(self.actor.state_dict(), filepath)
 
     def load(self, filepath: str) -> None:
-        """
-        Load actor network weights from a file.
-
-        Args:
-            filepath: path to the checkpoint file.
-        """
-        raise NotImplementedError
+        self.actor.load_state_dict(torch.load(filepath, map_location=self.device))

@@ -1,182 +1,146 @@
 """
 Training script for RL agents on Horizontal Pong.
-
-Supported agents: actor_critic, reinforce, reinforce_baseline.
-
-Usage:
-    python -m run.train --agent actor_critic        --steps 500000 --seed 42
-    python -m run.train --agent reinforce           --steps 500000 --seed 42
-    python -m run.train --agent reinforce_baseline  --steps 500000 --seed 42
-
-Saves model checkpoints and training logs (CSV) to artifacts/.
 """
 
 import argparse
+import os
+import random
 import numpy as np
+import pandas as pd
+import torch
 from typing import Dict, List
 
 from src.environment.pong_env import PongEnv
-from src.agent.actor_critic import ActorCriticAgent
 from src.agent.reinforce import ReinforceAgent
-from src.agent.reinforce_baseline import ReinforceBaselineAgent
-from run.config import (
-    TrainConfig,
-    ActorCriticConfig,
-    ReinforceConfig,
-    ReinforceBaselineConfig,
-)
+# Import other agents when implemented
+# from src.agent.actor_critic import ActorCriticAgent
+# from src.agent.reinforce_baseline import ReinforceBaselineAgent
+
+from run.config import TrainConfig, ReinforceConfig
 
 
 def parse_args() -> argparse.Namespace:
-    """
-    Parse command-line arguments for the training script.
-
-    Arguments:
-        --agent:  agent type, one of {"actor_critic", "reinforce",
-                  "reinforce_baseline"}.
-        --steps:  total number of environment steps (default 500_000).
-        --seed:   random seed for reproducibility (default 42).
-        --device: torch device, "cpu" or "cuda" (default "cpu").
-
-    Returns:
-        Parsed argparse.Namespace.
-    """
-    raise NotImplementedError
+    parser = argparse.ArgumentParser(description="Train RL Agents on Pong.")
+    parser.add_argument("--agent", type=str, required=True, 
+                        choices=["actor_critic", "reinforce", "reinforce_baseline"])
+    parser.add_argument("--steps", type=int, default=TrainConfig.total_steps)
+    parser.add_argument("--seed", type=int, default=TrainConfig.seed)
+    parser.add_argument("--device", type=str, default=TrainConfig.device, 
+                        choices=["cpu", "cuda"])
+    return parser.parse_args()
 
 
 def set_all_seeds(seed: int) -> None:
-    """
-    Set random seeds for numpy, torch, and the environment for full reproducibility.
-
-    Args:
-        seed: integer seed value.
-    """
-    raise NotImplementedError
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
-def create_agent(agent_type: str, config: Dict, device: str):
-    """
-    Factory function: instantiate the appropriate agent based on type string.
-
-    Args:
-        agent_type: one of {"actor_critic", "reinforce", "reinforce_baseline"}.
-        config: dict of hyperparameters from the corresponding config dataclass.
-        device: torch device string.
-
-    Returns:
-        An instance of ActorCriticAgent, ReinforceAgent,
-        or ReinforceBaselineAgent.
-    """
-    raise NotImplementedError
-
-
-def train_actor_critic(
-    env: PongEnv, agent: ActorCriticAgent, total_steps: int, config: TrainConfig
-) -> Dict[str, List]:
-    """
-    Training loop for the Actor-Critic agent.
-
-    For each step:
-        1. Select action a ~ pi(.|s).
-        2. Execute env.step(a), receive (s', r, terminated, truncated, info).
-        3. Select next action a' ~ pi(.|s') for SARSA target.
-        4. Store transition (s, a, r, s', a') in replay buffer.
-        5. Every N steps: update critic and actor.
-        6. On episode end: log metrics, reset environment.
-
-    Args:
-        env: PongEnv instance.
-        agent: ActorCriticAgent instance.
-        total_steps: total environment steps to train for.
-        config: TrainConfig with logging/saving intervals.
-
-    Returns:
-        history: dict with keys:
-            "episode_rewards": list of total rewards per episode.
-            "episode_hits": list of ball hits per episode.
-            "episode_lengths": list of episode step counts.
-            "critic_losses": list of critic loss values.
-            "actor_losses": list of actor loss values.
-    """
-    raise NotImplementedError
+def create_agent(agent_type: str, device: str):
+    if agent_type == "reinforce":
+        config = ReinforceConfig()
+        return ReinforceAgent(
+            state_dim=config.state_dim,
+            action_dim=config.action_dim,
+            hidden_dim=config.hidden_dim,
+            gamma=config.gamma,
+            lr_actor=config.lr_actor,
+            device=device
+        )
+    # elif agent_type == "actor_critic": ...
+    # elif agent_type == "reinforce_baseline": ...
+    else:
+        raise ValueError(f"Unknown agent type: {agent_type}")
 
 
 def train_reinforce(
     env: PongEnv, agent: ReinforceAgent, total_steps: int, config: TrainConfig
 ) -> Dict[str, List]:
-    """
-    Training loop for the REINFORCE agent.
-
-    For each episode:
-        1. Reset environment.
-        2. Collect full trajectory: for each step, select action and store reward.
-        3. After episode ends: compute returns G_t, update actor.
-        4. Log metrics.
-        5. Repeat until total_steps exhausted.
-
-    Args:
-        env: PongEnv instance.
-        agent: ReinforceAgent instance.
-        total_steps: total environment steps to train for.
-        config: TrainConfig with logging/saving intervals.
-
-    Returns:
-        history: dict with same keys as train_actor_critic.
-    """
-    raise NotImplementedError
-
-
-def train_reinforce_baseline(
-    env: PongEnv, agent: ReinforceBaselineAgent, total_steps: int, config: TrainConfig
-) -> Dict[str, List]:
-    """
-    Training loop for the REINFORCE with baseline agent.
-
-    Same episodic structure as vanilla REINFORCE, but the agent also
-    subtracts a heuristic baseline b(s) from the returns.
-
-    For each episode:
-        1. Reset environment.
-        2. Collect full trajectory: select actions, store states and rewards.
-        3. After episode ends: compute returns G_t, compute baselines, update actor.
-        4. Log metrics.
-        5. Repeat until total_steps exhausted.
-
-    Args:
-        env: PongEnv instance.
-        agent: ReinforceBaselineAgent instance.
-        total_steps: total environment steps to train for.
-        config: TrainConfig with logging/saving intervals.
-
-    Returns:
-        history: dict with keys:
-            "episode_rewards": list of total rewards per episode.
-            "episode_hits": list of ball hits per episode.
-            "episode_lengths": list of episode step counts.
-            "actor_losses": list of actor loss values.
-    """
-    raise NotImplementedError
+    history = {
+        "episode": [], "reward": [], "hits": [], 
+        "length": [], "actor_loss": []
+    }
+    
+    global_step = 0
+    episodes = 0
+    
+    print(f"Starting REINFORCE training for {total_steps} steps...")
+    
+    while global_step < total_steps:
+        state = env.reset()
+        done = False
+        ep_reward = 0.0
+        
+        while not done:
+            action = agent.select_action(state)
+            next_state, reward, terminated, truncated, info = env.step(action)
+            
+            agent.store_reward(reward)
+            state = next_state
+            ep_reward += reward
+            global_step += 1
+            
+            done = terminated or truncated
+            
+            if global_step >= total_steps:
+                break
+                
+        # Episode is finished (or max steps reached), compute MC update
+        update_info = agent.update()
+        episodes += 1
+        
+        # Logging
+        history["episode"].append(episodes)
+        history["reward"].append(ep_reward)
+        history["hits"].append(info["hits"])
+        history["length"].append(info["step_count"])
+        history["actor_loss"].append(update_info.get("actor_loss", 0.0))
+        
+        if episodes % config.log_interval == 0:
+            avg_rew = np.mean(history["reward"][-config.log_interval:])
+            avg_hits = np.mean(history["hits"][-config.log_interval:])
+            print(f"Step: {global_step}/{total_steps} | Episode: {episodes} | "
+                  f"Avg Reward (last {config.log_interval}): {avg_rew:.3f} | "
+                  f"Avg Hits: {avg_hits:.2f} | Loss: {update_info.get('actor_loss', 0.0):.4f}")
+            
+        if global_step % config.save_interval == 0 or global_step >= total_steps:
+            os.makedirs(config.artifacts_dir, exist_ok=True)
+            save_path = os.path.join(config.artifacts_dir, f"{args.agent}_model.pt")
+            agent.save(save_path)
+            
+    return history
 
 
 def save_training_log(history: Dict[str, List], filepath: str) -> None:
-    """
-    Save training metrics to a CSV file for later analysis.
-
-    Columns: episode, reward, hits, length, critic_loss, actor_loss.
-
-    Args:
-        history: training history dict.
-        filepath: output CSV path (e.g. "artifacts/train_log_ac.csv").
-    """
-    raise NotImplementedError
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    df = pd.DataFrame(history)
+    df.to_csv(filepath, index=False)
+    print(f"Training log saved to {filepath}")
 
 
 def main() -> None:
-    """
-    Entry point: parse arguments, create environment and agent,
-    run the appropriate training loop, save model and logs.
-    """
-    raise NotImplementedError
+    global args
+    args = parse_args()
+    
+    set_all_seeds(args.seed)
+    
+    env = PongEnv()
+    env.seed(args.seed)
+    
+    train_config = TrainConfig(total_steps=args.steps, seed=args.seed, device=args.device)
+    agent = create_agent(args.agent, args.device)
+    
+    if args.agent == "reinforce":
+        history = train_reinforce(env, agent, args.steps, train_config)
+    else:
+        raise NotImplementedError(f"Training loop for {args.agent} is not yet implemented.")
+        
+    # Final save of the log
+    log_path = os.path.join(train_config.artifacts_dir, f"train_log_{args.agent}.csv")
+    save_training_log(history, log_path)
+    print("Training finished successfully!")
 
 
 if __name__ == "__main__":

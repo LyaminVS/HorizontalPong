@@ -1,29 +1,15 @@
 """
 Neural network architectures for Actor and Critic.
-
-Actor:    MLP  5 -> 128 -> 128 -> 3, outputs action probabilities via Softmax.
-Critic:   MLP  8 -> 128 -> 128 -> 1, inputs [s_norm; one_hot(a)], outputs Q(s,a).
-
-All agents share the same ActorNetwork architecture for fair comparison.
-CriticNetwork (Q-function) is used by Actor-Critic.
 """
 
 import torch
 import torch.nn as nn
+import numpy as np
 from run.config import ActorCriticConfig
 
 
 class ActorNetwork(nn.Module):
-    """
-    Policy network pi(a | s).
-
-    Architecture:
-        Linear(5 -> 128) -> ReLU -> Linear(128 -> 128) -> ReLU -> Linear(128 -> 3)
-        Output passed through Softmax to produce action probabilities.
-
-    Input:  normalized state vector s_norm of shape (batch, 5).
-    Output: action probability distribution of shape (batch, 3).
-    """
+    """Policy network pi(a | s)."""
 
     def __init__(
         self,
@@ -31,40 +17,33 @@ class ActorNetwork(nn.Module):
         hidden_dim: int = ActorCriticConfig.hidden_dim,
         action_dim: int = ActorCriticConfig.action_dim,
     ) -> None:
-        """
-        Initialize the actor MLP layers.
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim)
+        )
+        self.apply(self._init_weights)
 
-        Args:
-            state_dim: dimensionality of the normalized state (default 5).
-            hidden_dim: number of hidden units per layer (default 128).
-            action_dim: number of discrete actions (default 3).
-        """
-        raise NotImplementedError
+    def _init_weights(self, m: nn.Module) -> None:
+        """Ортогональная инициализация для стабильного старта RL агента."""
+        if isinstance(m, nn.Linear):
+            nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+            nn.init.constant_(m.bias, 0.0)
+            
+            # Последний слой делаем с маленьким gain, чтобы вероятности 
+            # на старте были почти одинаковыми (равномерными)
+            if m == self.net[-1]:
+                nn.init.orthogonal_(m.weight, gain=0.01)
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass: compute action probabilities.
-
-        Args:
-            state: normalized state tensor of shape (batch, state_dim).
-
-        Returns:
-            probs: action probability tensor of shape (batch, action_dim),
-                   each row sums to 1.
-        """
-        raise NotImplementedError
+        return self.net(state)
 
 
 class CriticNetwork(nn.Module):
-    """
-    Q-value network q_hat(s, a).
-
-    Architecture:
-        Linear(8 -> 128) -> ReLU -> Linear(128 -> 128) -> ReLU -> Linear(128 -> 1)
-
-    Input:  concatenation [s_norm; one_hot(a)] of shape (batch, 8).
-    Output: scalar Q-value estimate of shape (batch, 1).
-    """
+    """Q-value network q_hat(s, a)."""
 
     def __init__(
         self,
@@ -72,26 +51,17 @@ class CriticNetwork(nn.Module):
         action_dim: int = ActorCriticConfig.action_dim,
         hidden_dim: int = ActorCriticConfig.hidden_dim,
     ) -> None:
-        """
-        Initialize the critic MLP layers.
-
-        Args:
-            state_dim: dimensionality of the normalized state (default 5).
-            action_dim: number of discrete actions (default 3), used for one-hot size.
-            hidden_dim: number of hidden units per layer (default 128).
-        """
-        raise NotImplementedError
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
+        self.action_dim = action_dim
 
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass: compute Q(s, a).
-
-        Args:
-            state: normalized state tensor of shape (batch, state_dim).
-            action: integer action tensor of shape (batch,). Will be one-hot encoded
-                    internally and concatenated with state.
-
-        Returns:
-            q_value: tensor of shape (batch, 1).
-        """
-        raise NotImplementedError
+        action_one_hot = nn.functional.one_hot(action.long(), num_classes=self.action_dim).float()
+        x = torch.cat([state, action_one_hot], dim=-1)
+        return self.net(x)
