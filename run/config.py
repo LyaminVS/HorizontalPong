@@ -14,14 +14,14 @@ class EnvConfig:
     height: int = 64
     paddle_width: int = 2
     paddle_height: int = 12
-    paddle_speed: int = 2
-    max_ball_speed_x: int = 2
-    max_ball_speed_y: int = 2
+    paddle_speed: int = 3
+    max_ball_speed_x: int = 4
+    max_ball_speed_y: int = 4
     random_bounce_prob: float = 1.0
     random_bounce_delta: int = 1
     left_x: int = 6
     right_x: int = 79
-    t_max: int = 2000
+    t_max: int = 5000
 
 
 @dataclass
@@ -32,7 +32,7 @@ class ActorCriticConfig:
     hidden_dim: int = 256
     gamma: float = 0.99
     lr: float = 3e-4
-    lr_min: float = 3e-6
+    lr_min: float = 3e-5
     lr_warmup_steps: int = 0
     lr_decay_steps: int = 500_000
     critic_coeff: float = 1

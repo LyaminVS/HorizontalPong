@@ -247,16 +247,13 @@ class PongEnv:
             self.bx = self.RX - 1
             self.by = int(np.clip(round(y_cross), 0, self.H - 1))
 
-            # Angular bounce: edge hits produce stronger vertical deflection.
+            # Parabolic paddle: incoming vy preserved + quadratic boost from impact point.
+            # Center hit → small boost, edge hit → large boost.
             half_ph = max(1, self.PH // 2)
-            offset = self.by - self.py  # negative: upper edge, positive: lower edge
-            normalized_offset = offset / float(half_ph)  # in [-1, 1] approximately
-            angle_boost = int(round(2.0 * normalized_offset))  # map to {-2, -1, 0, 1, 2}
-            self.vy = int(
-                np.clip(
-                    self.vy + angle_boost, -self.MAX_BALL_SPEED_Y, self.MAX_BALL_SPEED_Y
-                )
-            )
+            offset = self.by - self.py
+            t_hit = np.clip(offset / float(half_ph), -1.0, 1.0)
+            curvature_boost = t_hit * abs(t_hit) * self.MAX_BALL_SPEED_Y
+            self.vy = int(np.clip(round(self.vy + curvature_boost), -self.MAX_BALL_SPEED_Y, self.MAX_BALL_SPEED_Y))
             self._apply_random_bounce_noise()
 
             self._hits += 1
@@ -291,10 +288,17 @@ class PongEnv:
 
         if abs(y_cross - self.ly) <= self.PH / 2.0:
             self.vx = abs(self.vx)
-            self.vy = self._opponent.apply_bounce_noise(self.vy, self._rng)
-            self._apply_random_bounce_noise()
             self.bx = self.LX + 1
             self.by = int(np.clip(round(y_cross), 0, self.H - 1))
+
+            half_ph = max(1, self.PH // 2)
+            offset = self.by - self.ly
+            t_opp = np.clip(offset / float(half_ph), -1.0, 1.0)
+            curvature_boost = t_opp * abs(t_opp) * self.MAX_BALL_SPEED_Y
+            self.vy = int(np.clip(round(self.vy + curvature_boost), -self.MAX_BALL_SPEED_Y, self.MAX_BALL_SPEED_Y))
+
+            self.vy = self._opponent.apply_bounce_noise(self.vy, self._rng)
+            self._apply_random_bounce_noise()
             return True
         return False
 
