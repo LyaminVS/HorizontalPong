@@ -1,16 +1,9 @@
 """
 TRPO agent (without value network baseline).
-
-Implements Trust Region Policy Optimization with:
-- Monte-Carlo reward-to-go returns
-- Scalar baseline via batch mean return (no critic/value NN)
-- KL-constrained update using conjugate gradient and backtracking line search
 """
 
 from __future__ import annotations
-
 from typing import Dict, List, Tuple
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -18,10 +11,7 @@ from torch.distributions import Categorical
 
 from run.config import TRPOConfig
 
-
 class _PolicyMLP(nn.Module):
-    """Simple categorical policy network for discrete actions."""
-
     def __init__(self, state_dim: int, hidden_dim: int, action_dim: int) -> None:
         super().__init__()
         self.net = nn.Sequential(
@@ -35,10 +25,7 @@ class _PolicyMLP(nn.Module):
     def forward(self, state: torch.Tensor) -> torch.Tensor:
         return self.net(state)
 
-
 class TRPOAgent:
-    """TRPO for discrete action spaces without value function network."""
-
     def __init__(
         self,
         state_dim: int = TRPOConfig.state_dim,
@@ -71,6 +58,13 @@ class TRPOAgent:
         self._rewards: List[float] = []
         self._log_probs: List[float] = []
 
+        self.batch_size = 10
+        self._episodes_in_batch = 0
+        self._batch_states: List[np.ndarray] = []
+        self._batch_actions: List[int] = []
+        self._batch_returns: List[float] = []
+        self._batch_log_probs: List[float] = []
+
     def select_action(self, state: np.ndarray) -> int:
         state_t = torch.as_tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
         logits = self.policy(state_t)
@@ -87,19 +81,32 @@ class TRPOAgent:
         self._rewards.append(float(reward))
 
     def update(self) -> Dict[str, float]:
-        if not self._states:
-            return {"surrogate_before": 0.0, "surrogate_after": 0.0, "kl": 0.0, "entropy": 0.0}
-
-        states = torch.as_tensor(np.asarray(self._states), dtype=torch.float32, device=self.device)
-        actions = torch.as_tensor(np.asarray(self._actions), dtype=torch.long, device=self.device)
-        old_log_probs = torch.as_tensor(
-            np.asarray(self._log_probs), dtype=torch.float32, device=self.device
-        )
+        if not self._rewards:
+            return {}
 
         returns = self._compute_returns(self._rewards)
-        returns_t = torch.as_tensor(returns, dtype=torch.float32, device=self.device)
+        self._batch_states.extend(self._states)
+        self._batch_actions.extend(self._actions)
+        self._batch_returns.extend(returns)
+        self._batch_log_probs.extend(self._log_probs)
+        self._episodes_in_batch += 1
+
+        self._states.clear()
+        self._actions.clear()
+        self._rewards.clear()
+        self._log_probs.clear()
+
+        if self._episodes_in_batch < self.batch_size:
+            return {}
+
+        states = torch.as_tensor(np.asarray(self._batch_states), dtype=torch.float32, device=self.device)
+        actions = torch.as_tensor(np.asarray(self._batch_actions), dtype=torch.long, device=self.device)
+        old_log_probs = torch.as_tensor(np.asarray(self._batch_log_probs), dtype=torch.float32, device=self.device)
+        returns_t = torch.as_tensor(np.asarray(self._batch_returns), dtype=torch.float32, device=self.device)
+
         advantages = returns_t - returns_t.mean()
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        if advantages.std() > 1e-5:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         with torch.no_grad():
             old_logits = self.policy(states)
@@ -117,21 +124,14 @@ class TRPOAgent:
         grads = torch.autograd.grad(loss_before, self.policy.parameters())
         loss_grad = self._flat_concat(grads).detach()
         loss_grad_norm = torch.norm(loss_grad)
+        
         if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
             clip_coef = min(1.0, self.grad_clip_norm / (loss_grad_norm.item() + 1e-8))
             loss_grad = loss_grad * clip_coef
 
         if torch.norm(loss_grad) < 1e-10:
-            self._clear_buffers()
-            with torch.no_grad():
-                entropy_now = Categorical(logits=self.policy(states)).entropy().mean().item()
-            return {
-                "surrogate_before": float(-loss_before.item()),
-                "surrogate_after": float(-loss_before.item()),
-                "kl": 0.0,
-                "entropy": float(entropy_now),
-                "grad_norm": float(loss_grad_norm.item()),
-            }
+            self._clear_batch()
+            return {"surrogate_before": float(-loss_before.item()), "kl": 0.0}
 
         step_dir = self._conjugate_gradient(
             lambda v: self._fisher_vector_product(v, states, old_dist),
@@ -175,7 +175,7 @@ class TRPOAgent:
         with torch.no_grad():
             entropy_after = Categorical(logits=self.policy(states)).entropy().mean().item()
 
-        self._clear_buffers()
+        self._clear_batch()
         return {
             "surrogate_before": float(-loss_before.item()),
             "surrogate_after": float(-loss_after.item()),
@@ -184,6 +184,13 @@ class TRPOAgent:
             "entropy": float(entropy_after),
             "grad_norm": float(loss_grad_norm.item()),
         }
+
+    def _clear_batch(self):
+        self._batch_states.clear()
+        self._batch_actions.clear()
+        self._batch_returns.clear()
+        self._batch_log_probs.clear()
+        self._episodes_in_batch = 0
 
     def save(self, filepath: str) -> None:
         torch.save({"policy_state_dict": self.policy.state_dict()}, filepath)
@@ -200,9 +207,7 @@ class TRPOAgent:
             returns[t] = running
         return returns
 
-    def _fisher_vector_product(
-        self, vector: torch.Tensor, states: torch.Tensor, old_dist: Categorical
-    ) -> torch.Tensor:
+    def _fisher_vector_product(self, vector: torch.Tensor, states: torch.Tensor, old_dist: Categorical) -> torch.Tensor:
         new_logits = self.policy(states)
         new_dist = Categorical(logits=new_logits)
         kl = torch.distributions.kl.kl_divergence(old_dist, new_dist).mean()
@@ -228,8 +233,7 @@ class TRPOAgent:
             x = x + alpha * p
             r = r - alpha * Avp
             new_rdotr = torch.dot(r, r)
-            if new_rdotr < 1e-10:
-                break
+            if new_rdotr < 1e-10: break
             beta = new_rdotr / (rdotr + 1e-8)
             p = r + beta * p
             rdotr = new_rdotr
@@ -247,9 +251,3 @@ class TRPOAgent:
             n = p.numel()
             p.data.copy_(flat_params[idx : idx + n].view_as(p))
             idx += n
-
-    def _clear_buffers(self) -> None:
-        self._states.clear()
-        self._actions.clear()
-        self._rewards.clear()
-        self._log_probs.clear()

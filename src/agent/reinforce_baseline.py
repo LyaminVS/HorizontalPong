@@ -1,46 +1,18 @@
 """
 REINFORCE with heuristic baseline.
-
-Same as vanilla REINFORCE, but subtracts a hand-crafted heuristic baseline b(s)
-from the returns to reduce gradient variance:
-    L_actor = -sum_t log pi(a_t | s_t) * (G_t - b(s_t))
-
-The baseline is NOT a neural network — it is a scalar or a simple
-function of the state computed by a user-defined heuristic.
-No additional learnable parameters, no extra optimizer.
-
-Uses ActorNetwork MLP(5->128->128->3) for the policy only.
+Uses EMA (Exponential Moving Average) of episode returns as a non-learned baseline.
 """
 
 import torch
 import numpy as np
 from typing import Dict, List
+from torch.distributions import Categorical
 
 from src.agent.networks import ActorNetwork
 from run.config import ReinforceBaselineConfig
 
 
 class ReinforceBaselineAgent:
-    """
-    REINFORCE agent with a heuristic (non-learned) baseline b(s).
-
-    The baseline reduces variance of the policy gradient without
-    introducing bias and without adding trainable parameters.
-
-    The concrete heuristic is defined in compute_baseline() and can be
-    swapped or tuned without changing the rest of the algorithm.
-    Possible heuristic strategies (to be chosen during implementation):
-        - Running average of recent episode returns.
-        - Simple function of state features (e.g. distance-based estimate).
-        - Exponential moving average of per-step rewards.
-        - Constant fitted to historical data.
-
-    Attributes:
-        actor: ActorNetwork instance.
-        gamma: discount factor (0.99).
-        lr_actor: actor learning rate (3e-4).
-    """
-
     def __init__(
         self,
         state_dim: int = ReinforceBaselineConfig.state_dim,
@@ -50,106 +22,107 @@ class ReinforceBaselineAgent:
         lr_actor: float = ReinforceBaselineConfig.lr_actor,
         device: str = "cpu",
     ) -> None:
-        """
-        Initialize actor network, Adam optimizer, episode trajectory storage,
-        and any internal state needed by the heuristic baseline
-        (e.g. running mean accumulator).
+        self.gamma = gamma
+        self.device = torch.device(device)
+        self.entropy_coeff = 0.01
+        
+        self.actor = ActorNetwork(state_dim, hidden_dim, action_dim).to(self.device)
+        self.optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr_actor)
 
-        Args:
-            state_dim: state vector dimensionality.
-            action_dim: number of discrete actions.
-            hidden_dim: hidden layer size.
-            gamma: discount factor.
-            lr_actor: learning rate for actor optimizer (Adam).
-            device: torch device ("cpu" or "cuda").
-        """
-        raise NotImplementedError
+        # Статистический бейзлайн (EMA)
+        self.baseline_ema = 0.0
+
+        # Буферы
+        self.ep_log_probs: List[torch.Tensor] = []
+        self.ep_entropies: List[torch.Tensor] = []
+        self.ep_rewards: List[float] = []
+
+        self.batch_size = 10
+        self.episodes_in_batch = 0
+        self.batch_log_probs: List[torch.Tensor] = []
+        self.batch_entropies: List[torch.Tensor] = []
+        self.batch_advantages: List[float] = []
 
     def select_action(self, state: np.ndarray) -> int:
-        """
-        Sample an action from the current policy pi(a | s).
-
-        Stores the log-probability and the state for the subsequent update.
-
-        Args:
-            state: normalized state vector (5,).
-
-        Returns:
-            action: sampled integer action.
-        """
-        raise NotImplementedError
+        state_ts = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        logits = self.actor(state_ts)
+        dist = Categorical(logits=logits)
+        action = dist.sample()
+        
+        self.ep_log_probs.append(dist.log_prob(action).squeeze())
+        self.ep_entropies.append(dist.entropy().squeeze())
+        return action.item()
 
     def store_reward(self, reward: float) -> None:
-        """
-        Append the reward received at the current step to the episode trajectory.
-
-        Args:
-            reward: scalar reward.
-        """
-        raise NotImplementedError
-
-    def compute_baseline(self, states: List[np.ndarray]) -> np.ndarray:
-        """
-        Compute the heuristic baseline value b(s_t) for each state in the episode.
-
-        This is a non-learned, hand-crafted function. The exact formula
-        is to be determined; it should provide a reasonable estimate of
-        expected return given the state, using only simple computations
-        (no neural networks, no gradient).
-
-        Args:
-            states: list of normalized state vectors from the episode,
-                    each of shape (5,).
-
-        Returns:
-            baselines: np.ndarray of shape (T,), one scalar baseline per step.
-        """
-        raise NotImplementedError
+        self.ep_rewards.append(reward)
 
     def update(self) -> Dict[str, float]:
-        """
-        Compute the REINFORCE + heuristic baseline update after a complete episode.
+        if len(self.ep_rewards) == 0:
+            return {}
 
-        1. Compute discounted returns G_t for each step t.
-        2. Compute heuristic baselines b(s_t) via compute_baseline().
-        3. Compute advantages: A_t = G_t - b(s_t).
-        4. Update actor: L_actor = -sum_t log pi(a_t | s_t) * A_t.
-        5. Optionally update internal baseline state (e.g. running mean).
-        6. Clear episode trajectory buffers.
+        returns = self._compute_returns(self.ep_rewards)
+        
+        # Обновляем исторический бейзлайн (статистика прошлого)
+        ep_mean = float(np.mean(returns))
+        if self.baseline_ema == 0.0:
+            self.baseline_ema = ep_mean
+        else:
+            self.baseline_ema = 0.99 * self.baseline_ema + 0.01 * ep_mean
 
-        Returns:
-            dict with "actor_loss": scalar loss value.
-        """
-        raise NotImplementedError
+        # Вычисляем Advantage = Return - Baseline
+        advantages = [G - self.baseline_ema for G in returns]
+
+        self.batch_log_probs.extend(self.ep_log_probs)
+        self.batch_entropies.extend(self.ep_entropies)
+        self.batch_advantages.extend(advantages)
+        self.episodes_in_batch += 1
+
+        self.ep_log_probs.clear()
+        self.ep_entropies.clear()
+        self.ep_rewards.clear()
+
+        if self.episodes_in_batch < self.batch_size:
+            return {}
+
+        adv_ts = torch.FloatTensor(self.batch_advantages).to(self.device)
+        
+        # Нормализуем Advantage для стабильности
+        if adv_ts.std() > 1e-5:
+            adv_ts = adv_ts / (adv_ts.std() + 1e-8)
+            
+        log_probs_ts = torch.stack(self.batch_log_probs)
+        entropies_ts = torch.stack(self.batch_entropies)
+        
+        policy_loss = -(log_probs_ts * adv_ts).mean()
+        loss = policy_loss - self.entropy_coeff * entropies_ts.mean()
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1.0)
+        self.optimizer.step()
+
+        self.batch_log_probs.clear()
+        self.batch_entropies.clear()
+        self.batch_advantages.clear()
+        self.episodes_in_batch = 0
+
+        return {"actor_loss": loss.item()}
 
     def _compute_returns(self, rewards: List[float]) -> List[float]:
-        """
-        Compute discounted cumulative returns from a list of rewards.
-
-        G_t = r_t + gamma * r_{t+1} + gamma^2 * r_{t+2} + ...
-
-        Args:
-            rewards: list of rewards [r_0, r_1, ..., r_{T-1}].
-
-        Returns:
-            list of discounted returns [G_0, G_1, ..., G_{T-1}].
-        """
-        raise NotImplementedError
+        returns = []
+        G = 0.0
+        for r in reversed(rewards):
+            G = r + self.gamma * G
+            returns.insert(0, G)
+        return returns
 
     def save(self, filepath: str) -> None:
-        """
-        Save actor network weights (and baseline internal state if any) to a file.
-
-        Args:
-            filepath: path to the checkpoint file (e.g. "artifacts/reinforce_bl_model.pt").
-        """
-        raise NotImplementedError
+        torch.save({"actor": self.actor.state_dict(), "baseline": self.baseline_ema}, filepath)
 
     def load(self, filepath: str) -> None:
-        """
-        Load actor network weights (and baseline internal state if any) from a file.
-
-        Args:
-            filepath: path to the checkpoint file.
-        """
-        raise NotImplementedError
+        ckpt = torch.load(filepath, map_location=self.device)
+        if isinstance(ckpt, dict):
+            self.actor.load_state_dict(ckpt["actor"])
+            self.baseline_ema = ckpt.get("baseline", 0.0)
+        else:
+            self.actor.load_state_dict(ckpt)

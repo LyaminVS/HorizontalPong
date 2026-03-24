@@ -25,14 +25,22 @@ class ReinforceAgent:
     ) -> None:
         self.gamma = gamma
         self.device = torch.device(device)
+        self.entropy_coeff = 0.01
         
         self.actor = ActorNetwork(state_dim, hidden_dim, action_dim).to(self.device)
         self.optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr_actor)
 
-        # Buffers
-        self.log_probs: List[torch.Tensor] = []
-        self.entropies: List[torch.Tensor] = []
-        self.rewards: List[float] = []
+        # Буферы текущего эпизода
+        self.ep_log_probs: List[torch.Tensor] = []
+        self.ep_entropies: List[torch.Tensor] = []
+        self.ep_rewards: List[float] = []
+
+        # Батч из 10 эпизодов для стабильности
+        self.batch_size = 10
+        self.episodes_in_batch = 0
+        self.batch_log_probs: List[torch.Tensor] = []
+        self.batch_entropies: List[torch.Tensor] = []
+        self.batch_returns: List[float] = []
 
     def select_action(self, state: np.ndarray) -> int:
         state_ts = torch.FloatTensor(state).unsqueeze(0).to(self.device)
@@ -41,49 +49,54 @@ class ReinforceAgent:
         dist = Categorical(logits=logits)
         action = dist.sample()
         
-        self.log_probs.append(dist.log_prob(action))
-        self.entropies.append(dist.entropy())
+        self.ep_log_probs.append(dist.log_prob(action).squeeze())
+        self.ep_entropies.append(dist.entropy().squeeze())
         
         return action.item()
 
     def store_reward(self, reward: float) -> None:
-        self.rewards.append(reward)
+        self.ep_rewards.append(reward)
 
     def update(self) -> Dict[str, float]:
-        if len(self.rewards) == 0:
-            return {"actor_loss": 0.0}
+        if len(self.ep_rewards) == 0:
+            return {}
 
-        returns = self._compute_returns(self.rewards)
-        returns_ts = torch.FloatTensor(returns).to(self.device)
-        
-        # НИКАКОЙ НОРМАЛИЗАЦИИ! Используем чистый Return.
+        returns = self._compute_returns(self.ep_rewards)
+        self.batch_log_probs.extend(self.ep_log_probs)
+        self.batch_entropies.extend(self.ep_entropies)
+        self.batch_returns.extend(returns)
+        self.episodes_in_batch += 1
 
-        policy_loss = []
-        entropy_bonus = []
+        self.ep_log_probs.clear()
+        self.ep_entropies.clear()
+        self.ep_rewards.clear()
+
+        # Ждем накопления батча (10 эпизодов)
+        if self.episodes_in_batch < self.batch_size:
+            return {}
+
+        returns_ts = torch.FloatTensor(self.batch_returns).to(self.device)
         
-        for log_prob, G_t, entropy in zip(self.log_probs, returns_ts, self.entropies):
-            policy_loss.append(-log_prob * G_t)
-            entropy_bonus.append(entropy)
+        # ЧИСТЫЙ REINFORCE: мы НЕ вычитаем среднее (нет бейзлайна).
+        # Но делим на std, чтобы градиенты не взорвались от наград в +/- 100
+        if returns_ts.std() > 1e-5:
+            returns_ts = returns_ts / (returns_ts.std() + 1e-8)
             
-        # Используем .sum() ! Длинный успешный эпизод должен давать сильный сигнал
-        policy_loss_sum = torch.stack(policy_loss).sum()
-        entropy_loss_sum = torch.stack(entropy_bonus).sum()
+        log_probs_ts = torch.stack(self.batch_log_probs)
+        entropies_ts = torch.stack(self.batch_entropies)
         
-        beta = 0.01  # Коэффициент энтропии
-        loss = policy_loss_sum - beta * entropy_loss_sum
+        policy_loss = -(log_probs_ts * returns_ts).mean()
+        loss = policy_loss - self.entropy_coeff * entropies_ts.mean()
 
         self.optimizer.zero_grad()
         loss.backward()
-        
-        # Клиппинг градиентов для защиты от слишком длинных эпизодов
-        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=10.0)
-        
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1.0)
         self.optimizer.step()
 
-        # Очищаем буферы
-        self.log_probs.clear()
-        self.entropies.clear()
-        self.rewards.clear()
+        self.batch_log_probs.clear()
+        self.batch_entropies.clear()
+        self.batch_returns.clear()
+        self.episodes_in_batch = 0
 
         return {"actor_loss": loss.item()}
 
