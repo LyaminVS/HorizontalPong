@@ -196,7 +196,7 @@ class TRPOAgent:
         torch.save({"policy_state_dict": self.policy.state_dict()}, filepath)
 
     def load(self, filepath: str) -> None:
-        checkpoint = torch.load(filepath, map_location=self.device)
+        checkpoint = torch.load(filepath, map_location=self.device, weights_only=False)
         self.policy.load_state_dict(checkpoint["policy_state_dict"])
 
     def _compute_returns(self, rewards: List[float]) -> np.ndarray:

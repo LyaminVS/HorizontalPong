@@ -120,7 +120,7 @@ class ReinforceBaselineAgent:
         torch.save({"actor": self.actor.state_dict(), "baseline": self.baseline_ema}, filepath)
 
     def load(self, filepath: str) -> None:
-        ckpt = torch.load(filepath, map_location=self.device)
+        ckpt = torch.load(filepath, map_location=self.device, weights_only=False)
         if isinstance(ckpt, dict):
             self.actor.load_state_dict(ckpt["actor"])
             self.baseline_ema = ckpt.get("baseline", 0.0)

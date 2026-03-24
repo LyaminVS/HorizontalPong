@@ -104,7 +104,8 @@ def get_deterministic_action(agent, state: np.ndarray) -> int:
 
 
 def evaluate(
-    env: PongEnv, agent, num_episodes: int, deterministic: bool = True
+    env: PongEnv, agent, num_episodes: int, max_hits: int = EvalConfig.max_hits,
+    deterministic: bool = True,
 ) -> Dict[str, float]:
     """Run evaluation episodes and compute aggregate metrics."""
     rewards = []
@@ -124,7 +125,7 @@ def evaluate(
 
             state, reward, terminated, truncated, info = env.step(action)
             ep_reward += reward
-            done = terminated
+            done = terminated or info.get("hits", 0) >= max_hits
 
         rewards.append(ep_reward)
         hits.append(info["hits"])
@@ -153,7 +154,7 @@ def record_rollout(
     while not done:
         action = get_deterministic_action(agent, state)
         state, reward, terminated, truncated, info = env.step(action)
-        done = terminated
+        done = terminated or info.get("hits", 0) >= EvalConfig.max_hits
 
         frame = renderer.capture_frame(
             bx=env.bx,
@@ -211,7 +212,7 @@ def main() -> None:
                 app_running = renderer.handle_events()
                 action = get_deterministic_action(agent, state)
                 state, reward, terminated, truncated, info = env.step(action)
-                done = terminated
+                done = terminated or info.get("hits", 0) >= EvalConfig.max_hits
                 
                 renderer.render_frame(
                     bx=env.bx,

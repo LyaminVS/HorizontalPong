@@ -29,6 +29,9 @@ class ActorCriticAgent:
         hidden_dim: int = ActorCriticConfig.hidden_dim,
         gamma: float = ActorCriticConfig.gamma,
         lr: float = ActorCriticConfig.lr,
+        lr_min: float = ActorCriticConfig.lr_min,
+        lr_warmup_steps: int = ActorCriticConfig.lr_warmup_steps,
+        lr_decay_steps: int = ActorCriticConfig.lr_decay_steps,
         critic_coeff: float = ActorCriticConfig.critic_coeff,
         entropy_coeff: float = ActorCriticConfig.entropy_coeff,
         use_entropy: bool = ActorCriticConfig.use_entropy,
@@ -47,6 +50,11 @@ class ActorCriticAgent:
         self.batch_size = batch_size
         self.update_every = update_every
         self.action_dim = action_dim
+
+        self.lr_max = float(lr)
+        self.lr_min = float(lr_min)
+        self.lr_warmup_steps = int(lr_warmup_steps)
+        self.lr_decay_steps = int(lr_decay_steps)
 
         self.network = ActorCriticNetwork(state_dim, action_dim, hidden_dim).to(device)
         self.optimizer = torch.optim.Adam(self.network.parameters(), lr=lr)
@@ -116,6 +124,7 @@ class ActorCriticAgent:
         ).item()
 
         self.optimizer.step()
+        current_lr = self._update_lr(step)
 
         return {
             "critic_loss": critic_loss.item(),
@@ -123,7 +132,20 @@ class ActorCriticAgent:
             "entropy_loss": entropy_loss_val,
             "total_loss": total_loss.item(),
             "grad_norm": grad_norm,
+            "lr": current_lr,
         }
+
+    def _update_lr(self, step: int) -> float:
+        """Warmup then cosine decay: lr_min + 0.5*(lr_max-lr_min)*(1+cos(π*t))."""
+        if step < self.lr_warmup_steps:
+            lr = self.lr_min + (self.lr_max - self.lr_min) * step / max(1, self.lr_warmup_steps)
+        else:
+            t = min(1.0, (step - self.lr_warmup_steps) / max(1, self.lr_decay_steps - self.lr_warmup_steps))
+            lr = self.lr_min + 0.5 * (self.lr_max - self.lr_min) * (1.0 + np.cos(np.pi * t))
+
+        for pg in self.optimizer.param_groups:
+            pg["lr"] = lr
+        return lr
 
     # ------------------------------------------------------------------
     # Loss components
@@ -182,6 +204,6 @@ class ActorCriticAgent:
         )
 
     def load(self, filepath: str) -> None:
-        ckpt = torch.load(filepath, map_location=self.device)
+        ckpt = torch.load(filepath, map_location=self.device, weights_only=False)
         self.network.load_state_dict(ckpt["network"])
         self.optimizer.load_state_dict(ckpt["optimizer"])

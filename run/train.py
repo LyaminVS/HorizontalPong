@@ -47,21 +47,18 @@ def set_all_seeds(seed: int) -> None:
 def create_agent(agent_type: str, device: str):
     if agent_type == "actor_critic":
         config = ActorCriticConfig()
-        
-        # Безопасное получение новых параметров (на случай если config.py не был обновлен)
-        lr = getattr(config, 'lr', getattr(config, 'lr_actor', 3e-4))
-        critic_coeff = getattr(config, 'critic_coeff', 1.0)
-        use_entropy = getattr(config, 'use_entropy', True)
-        
         return ActorCriticAgent(
             state_dim=config.state_dim,
             action_dim=config.action_dim,
             hidden_dim=config.hidden_dim,
             gamma=config.gamma,
-            lr=lr,
-            critic_coeff=critic_coeff,
+            lr=config.lr,
+            lr_min=config.lr_min,
+            lr_warmup_steps=config.lr_warmup_steps,
+            lr_decay_steps=config.lr_decay_steps,
+            critic_coeff=config.critic_coeff,
             entropy_coeff=config.entropy_coeff,
-            use_entropy=use_entropy,
+            use_entropy=config.use_entropy,
             grad_clip_norm=config.grad_clip_norm,
             buffer_capacity=config.buffer_capacity,
             batch_size=config.batch_size,
@@ -250,7 +247,7 @@ def train_actor_critic(
     history: Dict[str, List] = {
         "episode": [], "reward": [], "hits": [], "length": [],
         "critic_loss": [], "actor_loss": [], "entropy_loss": [], "total_loss": [],
-        "grad_norm": [],
+        "grad_norm": [], "lr": [],
     }
 
     global_step = 0
@@ -299,6 +296,7 @@ def train_actor_critic(
         history["entropy_loss"].append(last_update_info.get("entropy_loss", 0.0))
         history["total_loss"].append(last_update_info.get("total_loss", 0.0))
         history["grad_norm"].append(last_update_info.get("grad_norm", 0.0))
+        history["lr"].append(last_update_info.get("lr", 0.0))
 
         if episodes % config.log_interval == 0:
             avg_rew = np.mean(history["reward"][-config.log_interval:])
@@ -309,7 +307,8 @@ def train_actor_critic(
                 f"Critic: {last_update_info.get('critic_loss', 0.0):.4f} | "
                 f"Actor: {last_update_info.get('actor_loss', 0.0):.4f} | "
                 f"Entropy: {last_update_info.get('entropy_loss', 0.0):.4f} | "
-                f"GradNorm: {last_update_info.get('grad_norm', 0.0):.4f}"
+                f"GradNorm: {last_update_info.get('grad_norm', 0.0):.4f} | "
+                f"LR: {last_update_info.get('lr', 0.0):.2e}"
             )
 
         if global_step % config.save_interval == 0 or global_step >= total_steps:

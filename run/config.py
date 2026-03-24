@@ -17,7 +17,7 @@ class EnvConfig:
     paddle_speed: int = 2
     max_ball_speed_x: int = 2
     max_ball_speed_y: int = 2
-    random_bounce_prob: float = 0.1
+    random_bounce_prob: float = 1.0
     random_bounce_delta: int = 1
     left_x: int = 6
     right_x: int = 79
@@ -32,12 +32,15 @@ class ActorCriticConfig:
     hidden_dim: int = 256
     gamma: float = 0.99
     lr: float = 3e-4
-    critic_coeff: float = 0.5
-    entropy_coeff: float = 0.01
+    lr_min: float = 3e-6
+    lr_warmup_steps: int = 0
+    lr_decay_steps: int = 500_000
+    critic_coeff: float = 1
+    entropy_coeff: float = 0.1
     use_entropy: bool = True
-    grad_clip_norm: float = 0.5
-    buffer_capacity: int = 10_000
-    batch_size: int = 128
+    grad_clip_norm: float = 1.0
+    buffer_capacity: int = 50000
+    batch_size: int = 1000
     update_every: int = 10
     
 @dataclass
@@ -45,7 +48,7 @@ class ReinforceConfig:
     """Hyperparameters for the REINFORCE agent."""
     state_dim: int = 5
     action_dim: int = 3
-    hidden_dim: int = 128
+    hidden_dim: int = 256
     gamma: float = 0.99
     lr_actor: float = 3e-4
 
@@ -55,7 +58,7 @@ class ReinforceBaselineConfig:
     """Hyperparameters for the REINFORCE with heuristic baseline agent."""
     state_dim: int = 5
     action_dim: int = 3
-    hidden_dim: int = 128
+    hidden_dim: int = 256
     gamma: float = 0.99
     lr_actor: float = 3e-4
 
@@ -92,6 +95,7 @@ class TrainConfig:
 class EvalConfig:
     """Evaluation pipeline parameters."""
     num_episodes: int = 100
+    max_hits: int = 1000
     seed: int = 1233142
     render: bool = False
     save_gif: bool = True

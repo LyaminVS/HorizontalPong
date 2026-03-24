@@ -112,4 +112,4 @@ class ReinforceAgent:
         torch.save(self.actor.state_dict(), filepath)
 
     def load(self, filepath: str) -> None:
-        self.actor.load_state_dict(torch.load(filepath, map_location=self.device))
+        self.actor.load_state_dict(torch.load(filepath, map_location=self.device, weights_only=False))
