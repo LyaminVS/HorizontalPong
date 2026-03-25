@@ -120,15 +120,19 @@ An entropy bonus with coefficient $\beta = 0.01$ encourages exploration. Gradien
 
 ### 2.2 REINFORCE with Baseline
 
-Identical to REINFORCE but subtracts an **exponential moving average (EMA)** of episode returns as a heuristic baseline:
-
-$$b \leftarrow 0.99 \cdot b + 0.01 \cdot \bar{g}_{\text{episode}}$$
-
-Here $\bar{g}_{\text{episode}}$ is the mean return over timesteps inside one episode:
+Identical to REINFORCE but subtracts a scalar baseline $b$ built from **past** episodes only. Let $\bar{g}_{\text{episode}}$ be the mean discounted return over timesteps in one episode:
 
 $$\bar{g}_{\text{episode}} = \frac{1}{T}\sum_{t=0}^{T-1} g_t$$
 
-The advantage $A_t = g_t - b$ replaces $g_t$ in the policy gradient. This reduces variance without introducing a learned value function. The baseline scalar is persisted across checkpoints.
+After each episode ends, we first form advantages using the baseline **before** folding in that episode,
+
+$$A_t = g_t - b_{\text{old}},$$
+
+then update the EMA (for use starting from the next episode):
+
+$$b \leftarrow 0.99 \cdot b + 0.01 \cdot \bar{g}_{\text{episode}}$$
+
+On the very first episode, $b_{\text{old}} = 0$ (no history); after that episode we set $b$ to $\bar{g}_{\text{episode}}$ to seed the tracker, then apply the EMA rule above. This avoids letting the current episode’s mean leak into $b_{\text{old}}$ for the same episode (which would bias the score-function estimator). The baseline scalar is persisted across checkpoints.
 
 ### 2.3 TRPO
 

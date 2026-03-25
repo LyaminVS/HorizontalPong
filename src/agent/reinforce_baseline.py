@@ -1,6 +1,7 @@
 """
 REINFORCE with heuristic baseline.
-Uses EMA (Exponential Moving Average) of episode returns as a non-learned baseline.
+Uses an EMA of past episode mean returns. The scalar subtracted in the current episode
+is the EMA *before* that episode is folded in (avoids same-episode leakage into b).
 """
 
 import torch
@@ -61,16 +62,17 @@ class ReinforceBaselineAgent:
             return {}
 
         returns = self._compute_returns(self.ep_rewards)
-        
-        # Обновляем исторический бейзлайн (статистика прошлого)
+
         ep_mean = float(np.mean(returns))
+        # Use baseline from *before* this episode (no contribution from current returns).
+        baseline_old = self.baseline_ema
+        advantages = [G - baseline_old for G in returns]
+
+        # Then update EMA for future episodes.
         if self.baseline_ema == 0.0:
             self.baseline_ema = ep_mean
         else:
             self.baseline_ema = 0.99 * self.baseline_ema + 0.01 * ep_mean
-
-        # Вычисляем Advantage = Return - Baseline
-        advantages = [G - self.baseline_ema for G in returns]
 
         self.batch_log_probs.extend(self.ep_log_probs)
         self.batch_entropies.extend(self.ep_entropies)
