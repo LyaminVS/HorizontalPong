@@ -432,9 +432,6 @@ This project compares four policy-gradient agents on Horizontal Pong. The README
 3. **REINFORCE and REINFORCE-Baseline remain weak here.** With the same evaluation protocol, mean hits stay near $1$ and episodes end early; the EMA baseline does not close the gap to AC/TRPO. Monte Carlo policy gradients on sparse terminal-style rewards stay high-variance relative to bootstrapped $Q$-learning.
 
 4. **Replay-buffer size matters for Actor-Critic.** The buffer sweep (Section 4.1) shows that larger capacities ($10000$ best among $\lbrace 1024, 5000, 10000\rbrace$) improve final reward and stability by decorrelating batches, at some cost to early learning when old transitions dominate.
-
-5. **Algorithm design matches the ranking.** Actor-Critic reuses data from a replay buffer, trains the critic with an Expected-SARSA-style TD target, and updates the actor with an analytical gradient through $\sum_a \pi(a|s)\,Q(s,a)$ (with $Q$ detached for the actor term). Training curves (Section 3) and the interactive policy map (`analysis/policy_decision_map.ipynb`) align with an interception-style policy for the best checkpoint.
-
 ---
 
 ## 8. Repository Structure
