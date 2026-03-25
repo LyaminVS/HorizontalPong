@@ -206,23 +206,23 @@ This prevents late-training instability by gradually reducing the step size as t
 
 Main defaults used in experiments (from `run/config.py`):
 
-| Group | Parameter | Default |
-|------|-----------|---------|
-| Environment | `width`, `height` | `86`, `64` |
-| Environment | `paddle_height`, `paddle_speed` | `12`, `3` |
-| Environment | `max_ball_speed_x`, `max_ball_speed_y` | `4`, `4` |
-| Environment | `t_max` | `5000` |
-| Training | `total_steps` | `500000` |
-| Training | `seed`, `device` | `42`, `cpu` |
-| Actor-Critic | `hidden_dim`, `gamma` | `256`, `0.99` |
-| Actor-Critic | `lr`, `lr_min` | `3e-4`, `3e-5` |
-| Actor-Critic | `buffer_capacity`, `batch_size`, `update_every` | `50000`, `1000`, `10` |
-| Actor-Critic | `critic_coeff`, `entropy_coeff`, `grad_clip_norm` | `1.0`, `0.1`, `1.0` |
-| REINFORCE | `hidden_dim`, `gamma`, `lr_actor` | `256`, `0.99`, `3e-4` |
-| REINFORCE-Baseline | `hidden_dim`, `gamma`, `lr_actor` | `256`, `0.99`, `3e-4` |
-| TRPO | `hidden_dim`, `gamma` | `256`, `0.99` |
-| TRPO | `max_kl`, `damping`, `cg_iters` | `0.001`, `0.05`, `10` |
-| TRPO | `backtrack_iters`, `backtrack_coeff`, `grad_clip_norm` | `10`, `0.8`, `3.0` |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `width`, `height` | `86`, `64` | Environment field size (pixels). |
+| `paddle_height`, `paddle_speed` | `12`, `3` | Agent paddle size and movement speed per step. |
+| `max_ball_speed_x`, `max_ball_speed_y` | `4`, `4` | Maximum absolute horizontal/vertical ball velocity. |
+| `t_max` | `5000` | Episode truncation limit (max environment steps). |
+| `total_steps` | `500000` | Number of environment steps in one training run. |
+| `seed`, `device` | `42`, `cpu` | Random seed and compute device. |
+| `hidden_dim`, `gamma` (AC) | `256`, `0.99` | MLP width and discount factor for Actor-Critic. |
+| `lr`, `lr_min` (AC) | `3e-4`, `3e-5` | Initial and minimum learning rate for cosine decay. |
+| `buffer_capacity`, `batch_size`, `update_every` (AC) | `50000`, `1000`, `10` | Replay buffer size, SGD batch size, and update frequency. |
+| `critic_coeff`, `entropy_coeff`, `grad_clip_norm` (AC) | `1.0`, `0.1`, `1.0` | Loss weights and global gradient clipping threshold. |
+| `hidden_dim`, `gamma`, `lr_actor` (REINFORCE) | `256`, `0.99`, `3e-4` | Policy network width, discount factor, and optimizer LR. |
+| `hidden_dim`, `gamma`, `lr_actor` (REINFORCE-Baseline) | `256`, `0.99`, `3e-4` | Same as REINFORCE with EMA baseline subtraction. |
+| `hidden_dim`, `gamma` (TRPO) | `256`, `0.99` | Policy network width and discount factor. |
+| `max_kl`, `damping`, `cg_iters` (TRPO) | `0.001`, `0.05`, `10` | Trust-region size, Fisher damping, conjugate-gradient iterations. |
+| `backtrack_iters`, `backtrack_coeff`, `grad_clip_norm` (TRPO) | `10`, `0.8`, `3.0` | Line-search settings and gradient clipping threshold. |
 
 ---
 
