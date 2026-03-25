@@ -88,9 +88,11 @@ class PongVersusEnv(PongEnv):
         winner = None
         if terminated:
             if self.bx < 0:
-                winner = "left"
-            elif self.bx >= self.W:
+                # Ball exited on the left side -> right player scores.
                 winner = "right"
+            elif self.bx >= self.W:
+                # Ball exited on the right side -> left player scores.
+                winner = "left"
 
         info = {
             "hits": self.total_hits,
