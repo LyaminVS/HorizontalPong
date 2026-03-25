@@ -1,183 +1,387 @@
-# Horizontal Pong — Actor-Critic vs REINFORCE
+# Horizontal Pong — Policy Gradient Methods
 
-Reinforcement learning project: training an agent to play discrete horizontal Pong using **Actor-Critic with Q(s,a)-critic** and **REINFORCE**, then comparing their performance.
+## 1. Task Description
 
----
+**Horizontal Pong** is a discrete, episodic 2D Pong environment in which an RL agent controls the **right paddle** and must deflect a ball as many times as possible against a rule-based opponent on the left. The environment is implemented from scratch (no Gymnasium dependency) with integer-valued physics, swept collision detection, and a configurable opponent curriculum.
 
-## Problem Definition
-
-The agent controls the **right paddle** in a 2D Pong game. The ball moves horizontally, bouncing off walls and paddles. The goal is to deflect the ball as many times as possible, maximizing cumulative reward. The opponent (left paddle) is controlled by a rule-based algorithm with increasing difficulty (curriculum).
-
-**Transitions are stochastic**: the opponent adds random noise to the ball's vertical velocity upon deflection. The noise level follows a curriculum schedule that increases with training progress.
-
----
-
-## Environment Specification
+<p align="center">
+  <img src="./readme_nec/gameplay.gif" alt="Trained agent playing Pong" width="500"/>
+</p>
+<p align="center">
+  <em>Example gameplay of the trained Actor-Critic agent (right paddle) against the rule-based opponent (left paddle).</em>
+</p>
 
 ### State Space
 
-Integer vector of 5 components, normalized for neural network input:
+The observation is a normalized real-valued vector of 5 components:
 
-| Variable | Range | Description |
-|----------|-------|-------------|
-| `bx` | 0..159 | Ball horizontal position |
-| `by` | 0..119 | Ball vertical position |
-| `vx` | {-2,-1,+1,+2} | Ball horizontal velocity |
-| `vy` | {-3..+3} | Ball vertical velocity |
-| `py` | PH/2..H-PH/2 | Agent paddle vertical center |
+$$s = \left(\frac{b_x}{W},\ \frac{b_y}{H},\ \frac{v_x}{v_x^{\max}},\ \frac{v_y}{v_y^{\max}},\ \frac{p_y}{H}\right) \in [0,1]^2 \times [-1,1]^2 \times [0,1]$$
 
-Normalization: `[bx/W, by/H, vx/3, vy/3, py/H]`
+| Component | Raw range | Description |
+|-----------|-----------|-------------|
+| $b_x$ | $0 \ldots W{-}1$ | Ball horizontal position |
+| $b_y$ | $0 \ldots H{-}1$ | Ball vertical position |
+| $v_x$ | $-v_x^{\max} \ldots -1,\ +1 \ldots v_x^{\max}$ | Ball horizontal velocity (never zero) |
+| $v_y$ | $-v_y^{\max} \ldots +v_y^{\max}$ | Ball vertical velocity |
+| $p_y$ | $\text{PH}/2 \ldots H{-}1{-}\text{PH}/2$ | Agent paddle vertical center |
+
+Default dimensions: $W = 86$, $H = 64$, $\text{PH} = 12$, $v_x^{\max} = 4$, $v_y^{\max} = 4$.
 
 ### Action Space
 
+$$\mathcal{A} = \lbrace 0,\ 1,\ 2 \rbrace$$
+
 | Code | Action | Effect |
 |------|--------|--------|
-| 0 | Up | `py -= 1`, clamped at `PH/2` |
-| 1 | Down | `py += 1`, clamped at `H-1-PH/2` |
+| 0 | Up | $p_y \leftarrow p_y - \text{speed}$, clamped at $\text{PH}/2$ |
+| 1 | Down | $p_y \leftarrow p_y + \text{speed}$, clamped at $H{-}1{-}\text{PH}/2$ |
 | 2 | Stay | No change |
 
-### Transition Logic
+### Transition Dynamics
 
-1. Ball advances: `bx' = bx + vx`, `by' = by + vy`.
-2. Wall bounce: if `by' <= 0` or `by' >= H-1`, vertical velocity reverses.
-3. Agent paddle hit: if `vx > 0`, `bx' >= RX`, and `|by' - py| <= PH/2` — ball reflects.
-4. Opponent paddle hit: opponent always intercepts; adds noise `delta ~ Uniform{-sigma..+sigma}` to `vy`.
+Each environment step proceeds as follows:
 
-Opponent curriculum:
+1. **Paddle update**: agent paddle moves according to the selected action, clamped to valid vertical range.
+2. **Ball advance**: $b_x \leftarrow b_x + v_x$, $b_y \leftarrow b_y + v_y$.
+3. **Wall bounce**: if $b_y \leq 0$ or $b_y \geq H{-}1$, the vertical velocity reverses ($v_y \leftarrow -v_y$) and $b_y$ is clamped.
+4. **Agent paddle hit**: swept collision detects whether the ball crossed the paddle x-line $x_R$ during this step. On hit, $v_x \leftarrow -|v_x|$ and parabolic angular deflection is applied (see below).
+5. **Opponent paddle hit**: the left paddle (controlled by a rule-based AI) intercepts the ball and applies curriculum-controlled bounce noise.
 
-| Training steps | sigma | Behavior |
-|----------------|-------|----------|
-| 0 – 50k | 0 | Straight returns |
-| 50k – 150k | 1 | Slight angle variation |
-| 150k+ | 2 | Strong angle variation |
+**Parabolic paddle deflection.** When the ball hits a paddle, the vertical velocity receives a quadratic boost depending on where on the paddle face the impact occurred. Let $\Delta = b_y - p_y$ be the signed offset from the paddle center, and $h = \lfloor \text{PH}/2 \rfloor$. The normalized impact parameter is:
+
+$$t = \operatorname{clip}\left(\frac{\Delta}{h},\ -1,\ 1\right)$$
+
+The boost added to $v_y$ is:
+
+$$\Delta v_y = t \cdot |t| \cdot v_y^{\max}$$
+
+Center hits produce near-zero deflection while edge hits produce maximum deflection, with a smooth quadratic profile in between. The incoming $v_y$ is preserved and the boost is additive:
+
+$$v_y \leftarrow \operatorname{clip}\left(\operatorname{round}(v_y + \Delta v_y),\ -v_y^{\max},\ v_y^{\max}\right)$$
+
+**Stochastic bounce noise.** After each paddle hit, with probability $p_{\text{bounce}}$ (default 1.0), an additional random perturbation $\delta \sim \text{Uniform}(-1, 0, +1)$ is added to $v_y$. This makes the transitions stochastic even without opponent noise.
+
+### Opponent
+
+The left paddle is controlled by a `LeftPaddleOpponent` that uses **predictive interception**: when the ball moves toward it ($v_x < 0$), the opponent simulates the ball trajectory forward (including wall bounces) to predict the intercept $y$-coordinate at the paddle line, then moves toward that $y$ at `paddle_speed`. When the ball moves away, the opponent drifts toward field center.
+
+The opponent adds integer noise $\delta \sim \text{Uniform}(-\sigma \ldots +\sigma)$ to $v_y$ upon deflection. The noise level $\sigma$ follows an optional curriculum:
+
+| Training steps | $\sigma$ | Behavior |
+|----------------|----------|----------|
+| $0$ – $50\text{k}$ | 0 | Straight returns |
+| $50\text{k}$ – $150\text{k}$ | 1 | Slight angle variation |
+| $150\text{k}+$ | 2 | Strong angle variation |
 
 ### Episode Termination
 
-- `bx < 0` — agent missed the ball (terminated, reward = -1).
-- `bx >= W` — opponent missed (terminated).
-- `t >= 2000` — time limit reached (truncated).
+| Condition | Type | Meaning |
+|-----------|------|---------|
+| $b_x \geq W$ | Terminated | Ball passed the agent (agent loses the rally) |
+| $b_x < 0$ | Terminated | Ball passed the opponent (agent wins the rally) |
+| $t \geq T_{\max}$ | Truncated | Time limit reached (default $T_{\max} = 5000$) |
 
 ### Reward Function
 
-| Reward | Event |
-|--------|-------|
-| +1 | Agent deflects the ball |
-| -1 | Agent misses the ball (`bx < 0`) |
-| 0 | All other steps |
+$$r(s, a) = \begin{cases} +100 & \text{if agent paddle deflects the ball} \\\\ -100 & \text{if ball exits on the agent side } (b_x \geq W) \\\\ 0 & \text{otherwise} \end{cases}$$
 
-**Dense shaping** (when `vx > 0`): `r_dense = -alpha * |py - by| / H`, where `alpha` decays linearly from 0.01 to 0 over the first 100k steps.
+**Optional dense reward shaping** (active when $v_x > 0$, i.e. ball approaching agent):
 
----
+$$r_{\text{dense}} = -\alpha \cdot \frac{|p_y - b_y|}{H}$$
 
-## Repository Structure
-
-```
-HorizontalPong/
-├── README.md                     # This file
-├── requirements.txt              # Python dependencies
-├── src/                          # Core source code (environment + agents)
-│   ├── __init__.py
-│   ├── environment/              # Pong environment (no gymnasium)
-│   │   ├── __init__.py
-│   │   ├── pong_env.py           # PongEnv: reset, step, seed, reward, transitions
-│   │   └── renderer.py           # PongRenderer: frame rendering, GIF/video export
-│   └── agent/                    # RL agents and neural networks
-│       ├── __init__.py
-│       ├── networks.py           # ActorNetwork, CriticNetwork (MLP)
-│       ├── actor_critic.py       # ActorCriticAgent: on-policy actor + off-policy critic
-│       ├── reinforce.py          # ReinforceAgent: Monte Carlo policy gradient
-│       └── replay_buffer.py      # ReplayBuffer for SARSA transitions
-├── run/                          # Run files: training and evaluation scripts
-│   ├── __init__.py
-│   ├── config.py                 # Hyperparameter dataclasses
-│   ├── train.py                  # Training entry point
-│   └── eval.py                   # Evaluation and rollout recording
-├── artifacts/                    # Model checkpoints, training logs, GIFs
-│   └── .gitkeep
-└── analysis/                     # Evaluation and visualization
-    └── visualize.ipynb           # Jupyter notebook for learning curves & comparison
-```
+where $\alpha$ decays linearly from $\alpha_0 = 0.01$ to $0$ over the first $100\text{k}$ global steps. This encourages the paddle to track the ball early in training, then fades to let the agent optimize the true sparse objective.
 
 ---
 
-## Methods
+## 2. Algorithms
 
-### Actor-Critic (Q-critic)
+We implement and compare four policy gradient methods. All share the same observation/action interface. The on-policy agents (REINFORCE, REINFORCE-Baseline, TRPO) use an identical two-layer MLP policy:
 
-- **Actor**: MLP `5→128→128→3` with Softmax, updated on-policy via advantage.
-- **Critic**: MLP `8→128→128→1` (input: `[s_norm; one_hot(a)]`), trained off-policy from replay buffer using SARSA TD-error.
-- **Advantage**: `A(s,a) = q_hat(s,a) - V^pi(s)`, with entropy bonus `beta * H(pi)`.
-- **Update frequency**: every 10 steps, batch size 64.
+$$\text{state}\ (5) \to \text{Linear}(256) \to \text{ReLU} \to \text{Linear}(256) \to \text{ReLU} \to \text{Linear}(3) \to \text{logits}$$
 
-### REINFORCE
+### 2.1 REINFORCE
 
-- **Actor**: identical MLP `5→128→128→3` for fair comparison.
-- **Update**: after each complete episode using Monte Carlo returns `G_t = sum gamma^k r_{t+k}`.
-- **No critic, no replay buffer.**
+The simplest Monte Carlo policy gradient method. After collecting a batch of $K = 10$ complete episodes, the agent computes discounted returns $G_t = \sum_{k=0}^{T-t-1} \gamma^k r_{t+k}$ and performs one gradient step:
+
+$$\nabla_\theta J(\theta) = \frac{1}{|\mathcal{B}|}\sum_{(s_t, a_t, G_t) \in \mathcal{B}} \nabla_\theta \log \pi_\theta(a_t | s_t) \cdot \hat{G}_t$$
+
+where $\hat{G}_t = G_t / (\operatorname{std}(G) + \varepsilon)$ is std-normalized (**no baseline** — no mean subtraction). An entropy bonus with coefficient $\beta = 0.01$ encourages exploration. Gradients are clipped to norm $1.0$.
+
+### 2.2 REINFORCE with Baseline
+
+Identical to REINFORCE but subtracts an **exponential moving average (EMA)** of episode returns as a heuristic baseline:
+
+$$b \leftarrow 0.99 \cdot b + 0.01 \cdot \bar{G}_ {\text{episode}}$$
+
+The advantage $A_t = G_t - b$ replaces $G_t$ in the policy gradient, followed by std-normalization. This reduces variance without introducing a learned value function. The baseline scalar is persisted across checkpoints.
+
+### 2.3 TRPO
+
+Trust Region Policy Optimization constrains each policy update to stay within a KL divergence trust region, preventing catastrophically large steps. Our implementation uses **no value network** — advantages are computed from normalized Monte Carlo returns (mean-subtracted, std-normalized).
+
+The update follows the standard TRPO procedure:
+
+1. Compute the **surrogate objective** with importance sampling ratio and entropy bonus:
+
+$$L(\theta) = \hat{\mathbb{E}}\left[\frac{\pi_\theta(a|s)}{\pi_{\theta_{\text{old}}}(a|s)} \hat{A}(s,a)\right] + \beta \cdot H(\pi_\theta)$$
+
+2. Compute the **policy gradient** $g = \nabla_\theta L(\theta)$, clipped to norm $\leq 3.0$.
+
+3. Find the **natural gradient direction** via the **conjugate gradient** algorithm (10 iterations) on the Fisher information matrix, with damping $0.05$:
+
+$$Fd = -g, \quad \text{then scale } d \text{ so that } \tfrac{1}{2} d^T F d = \delta_{\text{KL}}$$
+
+4. **Line search** with backtracking (up to 10 steps, factor $0.8$) to ensure $\text{KL}(\pi_{\theta_{\text{old}}} \| \pi_\theta) \leq \delta_{\text{KL}}$ and the surrogate improves. Default trust region size: $\delta_{\text{KL}} = 0.001$.
+
+### 2.4 Actor-Critic (Off-Policy, Shared Backbone)
+
+The **Actor-Critic** is the primary agent studied in this project. Unlike the on-policy methods above, it learns off-policy from a replay buffer, enabling more sample-efficient use of experience.
+
+#### Architecture
+
+The agent uses a **single shared MLP backbone** with two separate linear heads — one for action logits (actor) and one for per-action Q-values (critic):
+
+$$\text{state}\ (5) \to \underbrace{\text{Linear}(256) \to \text{ReLU} \to \text{Linear}(256) \to \text{ReLU}}_ {\text{shared backbone}} \to \phi(s)$$
+
+$$\phi(s) \to \text{Actor head: Linear}(3) \to \text{logits } \in \mathbb{R}^{|\mathcal{A}|}$$
+
+$$\phi(s) \to \text{Critic head: Linear}(3) \to Q(s, \cdot) \in \mathbb{R}^{|\mathcal{A}|}$$
+
+The shared backbone forces the actor and critic to develop a common state representation, which improves gradient flow and makes learning more stable. Orthogonal initialization is applied: the backbone uses gain $\sqrt{2}$, the actor head uses gain $0.01$ (near-uniform initial policy), and the critic head uses gain $1.0$.
+
+#### Off-Policy Learning Pipeline
+
+Transitions $(s, a, r, s', \text{done})$ are stored in a **circular replay buffer** of capacity $M$. Every $U$ environment steps, a mini-batch of $B$ transitions is sampled uniformly for a single gradient step. This decouples data collection from learning: each transition can be reused many times, which is particularly beneficial in environments with long episodes.
+
+#### Critic Loss (Expected-SARSA TD Target)
+
+The critic learns $Q(s, a)$ via one-step TD error. The target uses the current policy probabilities to compute the expected next-state value:
+
+$$V^{\pi}(s') = \sum_{a'} \pi(a' | s') \cdot Q(s', a')$$
+
+$$L_{\text{critic}} = \frac{1}{B}\sum_{i=1}^{B}\left(Q(s_i, a_i) - \left[r_i + \gamma (1 - d_i) \cdot V^{\pi}(s_i')\right]\right)^2$$
+
+This is the Expected-SARSA formulation: instead of bootstrapping from $Q(s', a')$ for a single sampled $a'$, we take an expectation over all actions under the current policy. This reduces variance compared to standard SARSA while maintaining an on-policy target for the critic.
+
+#### Actor Loss (Analytical Policy Gradient)
+
+The actor is updated via a **fully differentiable analytical** policy gradient, directly maximizing the expected Q-value under the current policy:
+
+$$L_{\text{actor}} = -\frac{1}{B}\sum_{i=1}^{B} \sum_{a} \pi(a | s_i) \cdot Q(s_i, a)$$
+
+where Q-values are **detached** (treated as constants) so that gradients flow only through the policy probabilities $\pi(a|s)$. This avoids the high variance of log-probability-based policy gradients (like REINFORCE) by directly differentiating through the softmax action distribution.
+
+#### Entropy Regularization
+
+An entropy bonus prevents premature policy collapse to a deterministic policy:
+
+$$L_{\text{entropy}} = \frac{1}{B}\sum_{i=1}^{B} \sum_a \pi(a | s_i) \log \pi(a | s_i)$$
+
+Minimizing $L_{\text{entropy}}$ (which is negative entropy) encourages the policy to maintain stochasticity, especially in early training when the Q-function is still inaccurate.
+
+#### Combined Loss
+
+All three loss components are optimized jointly by a single Adam optimizer on the shared network:
+
+$$L = c_{\text{critic}} \cdot L_{\text{critic}} + L_{\text{actor}} + c_{\text{entropy}} \cdot L_{\text{entropy}}$$
+
+with default coefficients $c_{\text{critic}} = 1.0$ and $c_{\text{entropy}} = 0.1$. Global gradient clipping (max norm $1.0$) is applied before the optimizer step.
+
+#### Learning Rate Schedule
+
+The learning rate follows a **cosine decay** from $\text{lr}_ {\max}$ to $\text{lr}_ {\min}$, with an optional linear warmup phase:
+
+$$\text{lr}(t) = \begin{cases} \text{lr}_ {\min} + (\text{lr}_ {\max} - \text{lr}_ {\min}) \cdot \frac{t}{T_ {\text{warmup}}} & \text{if } t < T_{\text{warmup}} \\\\ \text{lr}_ {\min} + \frac{1}{2}(\text{lr}_ {\max} - \text{lr}_ {\min})\left(1 + \cos\left(\pi \cdot \frac{t - T_ {\text{warmup}}}{T_ {\text{decay}} - T_{\text{warmup}}}\right)\right) & \text{otherwise} \end{cases}$$
+
+This prevents late-training instability by gradually reducing the step size as the policy approaches convergence.
 
 ---
 
-## Hyperparameters
+## 3. Hyperparameters
+
+### Environment
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| W x H | 160 x 120 | Field size (pixels) |
-| PW x PH | 2 x 12 | Paddle size |
-| Actor MLP | 5→128→128→3 | Same for both methods |
-| Critic MLP | 8→128→128→1 | Actor-Critic only |
-| gamma | 0.99 | Discount factor |
-| lr_actor | 3e-4 (Adam) | Same for both methods |
-| lr_critic | 1e-4 (Adam) | Actor-Critic only |
-| M (buffer) | 10,000 | Replay buffer capacity |
-| B (batch) | 64 | Critic batch size |
-| beta (entropy) | 0.01 | Entropy bonus coefficient |
-| alpha (dense) | 0.01 → 0 | Dense reward decay over 100k steps |
-| Total steps | 500,000 | Per method |
+| $W \times H$ | $86 \times 64$ | Field size (pixels) |
+| $\text{PW} \times \text{PH}$ | $2 \times 12$ | Paddle size |
+| Paddle speed | 3 px/step | Paddle movement per action |
+| $v_x^{\max},\ v_y^{\max}$ | 4, 4 | Maximum ball speed components |
+| $T_{\max}$ | 5000 | Maximum episode length |
+| $\gamma$ | 0.99 | Discount factor (all agents) |
+
+### Actor-Critic
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| Shared MLP | $5 \to 256 \to 256$ | Backbone hidden layers |
+| Actor / Critic heads | $256 \to 3$ each | Separate linear heads |
+| Learning rate | $3 \times 10^{-4} \to 3 \times 10^{-5}$ | Adam, cosine decay |
+| $c_{\text{critic}}$ | 1.0 | Critic loss coefficient |
+| $c_{\text{entropy}}$ | 0.1 | Entropy loss coefficient |
+| Gradient clip norm | 1.0 | Max gradient L2 norm |
+| Buffer capacity $M$ | 50,000 | Replay buffer size |
+| Batch size $B$ | 1,000 | Mini-batch per update |
+| Update frequency $U$ | every 10 steps | Steps between gradient updates |
+
+### REINFORCE / REINFORCE-Baseline
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| Policy MLP | $5 \to 256 \to 256 \to 3$ | Same architecture |
+| Learning rate | $3 \times 10^{-4}$ | Adam optimizer |
+| Episode batch | 10 | Episodes accumulated before update |
+| Entropy coefficient | 0.01 | Entropy bonus weight |
+| Gradient clip norm | 1.0 | Max gradient L2 norm |
+| Baseline EMA decay | 0.99 | REINFORCE-Baseline only |
+
+### TRPO
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| Policy MLP | $5 \to 256 \to 256 \to 3$ | Same architecture |
+| $\delta_{\text{KL}}$ | 0.001 | Trust region size |
+| Entropy coefficient | 0.001 | Entropy bonus weight |
+| Gradient clip norm | 3.0 | Clip on flat gradient before CG |
+| CG iterations | 10 | Conjugate gradient steps |
+| Damping | 0.05 | Fisher matrix damping |
+| Line search steps | 10 | Backtracking iterations |
+| Backtrack coefficient | 0.8 | Step size reduction factor |
 
 ---
 
-## Reproducibility
+## 4. Training Results
 
-### Install dependencies
+### 4.1 Learning Curves — All Agents
 
-```bash
-pip install -r requirements.txt
-```
+<p align="center">
+  <img src="./readme_nec/learning_curves_reward.png" alt="Learning curves: mean episode reward" width="700"/>
+</p>
+<p align="center">
+  <em>Mean episode reward (smoothed) as a function of training step for all four agents, trained for 500k steps with seed 42.</em>
+</p>
 
-### Train
+**Plot description:**
+TODO
 
-```bash
-# Actor-Critic
-python -m run.train --agent actor_critic --steps 500000 --seed 42
+<p align="center">
+  <img src="./readme_nec/learning_curves_hits.png" alt="Learning curves: mean hits per episode" width="700"/>
+</p>
+<p align="center">
+  <em>Mean ball deflections (hits) per episode over training. Hits directly measure gameplay skill — a higher value means the agent sustains longer rallies.</em>
+</p>
 
-# REINFORCE
-python -m run.train --agent reinforce --steps 500000 --seed 42
-```
+**Plot description:**
+TODO
 
-### Evaluate
+### 4.2 Actor-Critic Loss Dynamics
 
-```bash
-# Actor-Critic
-python -m run.eval --agent actor_critic --checkpoint artifacts/ac_model.pt --episodes 100
+<p align="center">
+  <img src="./readme_nec/ac_loss_curves.png" alt="Actor-Critic loss components over training" width="700"/>
+</p>
+<p align="center">
+  <em>Actor-Critic training dynamics: critic loss, actor loss, entropy loss, and gradient norm as functions of training step.</em>
+</p>
 
-# REINFORCE
-python -m run.eval --agent reinforce --checkpoint artifacts/reinforce_model.pt --episodes 100
-```
+**Plot description:**
+TODO
 
-### Expected Output
+### 4.3 Actor-Critic Policy Visualization
 
-- **Model checkpoints**: `artifacts/ac_model.pt`, `artifacts/reinforce_model.pt`
-- **Training logs**: `artifacts/train_log_ac.csv`, `artifacts/train_log_reinforce.csv`
-- **Rollout GIFs**: `artifacts/rollout_ac.gif`, `artifacts/rollout_reinforce.gif`
-- **Learning curves**: generated in `analysis/visualize.ipynb`
+<p align="center">
+  <img src="./readme_nec/policy_decision_map.png" alt="Actor-Critic policy decision map" width="700"/>
+</p>
+<p align="center">
+  <em>Policy decision map for the trained Actor-Critic agent. Each cell shows the preferred action (up/down/stay) as a function of agent paddle position (y-axis) and ball position (x-axis), for a fixed ball velocity. The map reveals the learned interception strategy: the agent moves toward the ball when it is approaching and stays otherwise.</em>
+</p>
+
+**Plot description:**
+TODO
 
 ---
 
-## Comparison Metrics
+## 5. Ablation Studies
 
-- Mean episode reward (sliding window of 100 episodes).
-- Mean ball hits per episode.
-- Steps to reach threshold: mean > 15 hits.
-- Reward variance (training stability).
+### 5.1 Replay Buffer Capacity
 
-**Expected result**: Actor-Critic converges faster than REINFORCE due to TD updates, off-policy experience reuse, and lower gradient variance.
+The replay buffer capacity $M$ is a critical hyperparameter for the off-policy Actor-Critic. A buffer that is too small may lead to overfitting on recent experience and correlated batches, while an excessively large buffer dilutes fresh high-reward transitions with stale data from an outdated policy. We sweep over $M \in \lbrace 256,\ 1024,\ 5000,\ 10000 \rbrace$ with all other hyperparameters fixed.
+
+<p align="center">
+  <img src="./readme_nec/buffer_sweep_reward.png" alt="Buffer capacity sweep: reward" width="700"/>
+</p>
+<p align="center">
+  <em>Mean episode reward over training for different replay buffer capacities. Each run uses the same seed and 50k training steps.</em>
+</p>
+
+**Plot description:**
+TODO
+
+<p align="center">
+  <img src="./readme_nec/buffer_sweep_hits.png" alt="Buffer capacity sweep: hits" width="700"/>
+</p>
+<p align="center">
+  <em>Mean hits per episode for different buffer capacities.</em>
+</p>
+
+**Plot description:**
+TODO
+
+<p align="center">
+  <img src="./readme_nec/buffer_sweep_loss.png" alt="Buffer capacity sweep: critic loss" width="700"/>
+</p>
+<p align="center">
+  <em>Critic loss dynamics for different buffer capacities. Smaller buffers exhibit higher loss volatility due to correlated samples, while larger buffers produce smoother but potentially slower-converging critic training.</em>
+</p>
+
+**Plot description:**
+TODO
+
+---
+
+## 6. Model Tournament
+
+*Section reserved for future tournament evaluation across trained agents. Results will be added after completion.*
+
+---
+
+## 7. Repository Structure
+
+```
+HorizontalPong/
+├── README.md                          # This file
+├── requirements.txt                   # Python dependencies
+├── .gitignore
+│
+├── src/                               # Core source code
+│   ├── __init__.py
+│   ├── environment/
+│   │   ├── __init__.py
+│   │   ├── pong_env.py                # PongEnv: reset, step, seed, reward, transitions
+│   │   ├── opponent.py                # LeftPaddleOpponent: predictive AI + curriculum
+│   │   └── renderer.py               # PongRenderer: Pygame display, frame capture, GIF export
+│   └── agent/
+│       ├── __init__.py
+│       ├── networks.py                # ActorNetwork, ActorCriticNetwork (shared backbone)
+│       ├── actor_critic.py            # ActorCriticAgent: off-policy, Expected-SARSA critic
+│       ├── reinforce.py               # ReinforceAgent: Monte Carlo policy gradient
+│       ├── reinforce_baseline.py      # ReinforceBaselineAgent: REINFORCE + EMA baseline
+│       ├── trpo.py                    # TRPOAgent: trust region with CG and line search
+│       └── replay_buffer.py           # ReplayBuffer: circular (s, a, r, s', done) storage
+│
+├── run/                               # Training, evaluation, and manual play scripts
+│   ├── __init__.py
+│   ├── config.py                      # All hyperparameter dataclasses
+│   ├── train.py                       # Training entry point (CLI)
+│   ├── eval.py                        # Evaluation: metrics, live rendering, GIF recording
+│   └── play.py                        # Human keyboard play against the opponent
+│
+├── analysis/                          # Jupyter notebooks for visualization
+│   ├── learning_curves.ipynb          # Compare all agents: reward, hits, losses
+│   ├── policy_decision_map.ipynb      # Interactive AC policy heatmaps (ipywidgets)
+│   └── buffer_capacity_compare.ipynb  # Sweep AC buffer capacity + training runs
+│
+└── artifacts/                         # Model checkpoints, training logs, GIFs
+    ├── .gitkeep
+    ├── checkpoints/                   # Intermediate step_*.pt snapshots
+    └── buffer_capacity_sweep/         # Per-capacity training outputs
+```
