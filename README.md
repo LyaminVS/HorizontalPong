@@ -39,13 +39,19 @@ $$\mathcal{A} = \lbrace 0,\ 1,\ 2 \rbrace$$
 
 ### Transition Function
 
-The environment defines a transition function
+The environment is **deterministic**. We write the transition mapping as:
 
-$$p(s' \mid s_t, a_t)$$
+$$s_{t+1} = T(s_t, a_t)$$
 
-that maps the current state $s_t$ and action $a_t$ to a distribution over next states $s'$. The transitions are **nearly deterministic** — they are fully determined by integer-valued physics rules — with a small stochastic component introduced by the optional bounce noise (see below).
+In this implementation, the only branching is due to the discrete action $a_t \in \lbrace 0,1,2 \rbrace$ (up / down / stay). The paddle update inside $T$ is:
 
-Each environment step proceeds as follows:
+$$p_y' = \begin{cases}
+\max(p_y - \text{speed},\ \text{PH}/2) & a_t = 0 \\\\
+\min(p_y + \text{speed},\ H{-}1{-}\text{PH}/2) & a_t = 1 \\\\
+p_y & a_t = 2
+\end{cases}$$
+
+After this action-dependent paddle update, all remaining parts of $T$ are deterministic physics (ball advance, wall bounce, swept paddle collisions, and parabolic deflection):
 
 1. **Paddle update**: agent paddle moves according to the selected action, clamped to valid vertical range.
 2. **Ball advance**: $b_x \leftarrow b_x + v_x$, $b_y \leftarrow b_y + v_y$.
