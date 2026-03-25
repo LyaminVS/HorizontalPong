@@ -47,7 +47,7 @@ Default movement/velocity parameters used in the current config:
 
 The transition is represented as a conditional distribution:
 
-$$P(s_{t+1}\mid s_t, a_t)$$
+$$P(s_{t+1}\mid S_t, A_t)$$
 
 The paddle-update component is:
 
