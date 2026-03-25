@@ -194,18 +194,18 @@ Transitions $(s, a, r, s', \text{done})$ are stored in a **circular replay buffe
 
 The critic learns $Q(s, a)$ via one-step TD error. The target uses current policy probabilities to compute the expected next-state value:
 
-$$V^{\pi}(s') = \sum_{a'} \pi(a' | s') \cdot Q(s', a')$$
+$$v^{\pi}(s') = \sum_{a'} \pi(a' | s') \cdot q(s', a')$$
 
-$$L_{\text{critic}} = \frac{1}{B}\sum_{i=1}^{B}\left(Q(s_i, a_i) - \left[r_i + \gamma (1 - d_i) \cdot V^{\pi}(s_i')\right]\right)^2$$
+$$L_{\text{critic}} = \frac{1}{B}\sum_{i=1}^{B}\left(q(s_i, a_i) - \left[r_i + \gamma (1 - d_i) \cdot v^{\pi}(s_i')\right]\right)^2$$
 
-This is the Expected-SARSA formulation: instead of bootstrapping from $Q(s', a')$ for one sampled $a'$, we take an expectation over all actions under the current policy.  
+This is the Expected-SARSA formulation: instead of bootstrapping from $q(s', a')$ for one sampled $a'$, we take an expectation over all actions under the current policy.  
 In implementation, this target is computed under `no_grad` (from the model state before the optimizer step), then used as a fixed regression target for the critic update.
 
 #### Actor Loss (Analytical Policy Gradient)
 
 The actor is updated via a **fully differentiable analytical** policy gradient, directly maximizing the expected Q-value under the current policy:
 
-$$L_{\text{actor}} = -\frac{1}{B}\sum_{i=1}^{B} \sum_{a} \pi(a | s_i) \cdot Q(s_i, a)$$
+$$L_{\text{actor}} = -\frac{1}{B}\sum_{i=1}^{B} \sum_{a} \pi(a | s_i) \cdot q(s_i, a)$$
 
 where Q-values are **detached** (treated as constants) so that gradients flow only through the policy probabilities $\pi(a|s)$. This avoids the high variance of log-probability-based policy gradients (like REINFORCE) by directly differentiating through the softmax action distribution.
 
