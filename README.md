@@ -89,7 +89,7 @@ $$v_y' = \bar{v}_y + \delta \cdot \mathbf{1}[U < p_{\text{bounce}}], \quad \delt
 clipped to $[-v_y^{\max},\, v_y^{\max}]$. All other components of $s'$ are determined by the physics above. Consequently, $P(s_{t+1} \mid s_t, a_t)$ is a **point mass** when no paddle contact occurs, and a distribution over **at most 3 next states** (differing only in $v_y'$) when a paddle contact occurs:
 
 $$P(s_{t+1} \mid s_t, a_t) = \begin{cases}
-\delta_{s^{\text{det}}} & \text{no paddle contact} \\[4pt]
+\delta_{s^{\text{det}}} & \text{no paddle contact} \\\\ [4pt]
 (1 - p_{\text{bounce}})\,\delta_{\bar{v}_y}(v_y')
 \;+\; \dfrac{p_{\text{bounce}}}{3}\sum_{k \in \{-1,\,0,\,+1\}} \delta_{\text{clip}(\bar{v}_y + k)}(v_y')
 & \text{paddle contact}
@@ -130,7 +130,7 @@ $$g_t = \sum_{k=0}^{T-t-1} \gamma^k r_{t+k}$$
 
 and performs one gradient step:
 
-$$\nabla_\theta J(\theta) = \frac{1}{|\mathcal{B}|}\sum_{(s_t, a_t, g_t) \in \mathcal{B}} \nabla_\theta \log \pi_\theta(a_t | s_t) \cdot g_t$$
+$$\nabla_\theta (v^{\pi^{\theta}}) = \frac{1}{|\mathcal{B}|}\sum_{(s_t, a_t, g_t) \in \mathcal{B}} \nabla_\theta \log \pi_\theta(a_t | s_t) \cdot g_t$$
 
 An entropy bonus with coefficient $\beta = 0.01$ encourages exploration. Gradients are clipped to norm $1.0$.
 
