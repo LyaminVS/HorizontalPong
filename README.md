@@ -340,7 +340,29 @@ This table summarizes the evaluation performance of the trained checkpoints unde
 
 ## 5. Model Tournament
 
-*Section reserved for future tournament evaluation across trained agents. Results will be added after completion.*
+We ran a head-to-head **PvP tournament** between the best TRPO and Actor-Critic checkpoints:
+
+```bash
+python -m run.play_pvp --episodes 100
+```
+
+### 5.1 Tournament Results (TRPO vs Actor-Critic)
+
+| Metric | Value |
+|------|------|
+| Total matches | `100` |
+| TRPO wins | `2` (`2.0%`) |
+| Actor-Critic wins | `85` (`85.0%`) |
+| Draws | `13` (`13.0%`) |
+| Avg hits per rally | `48.88` |
+| Max hits per rally | `218` |
+
+**Interpretation:**
+- Actor-Critic is decisively stronger in direct competition, winning the vast majority of rallies.
+- TRPO can occasionally win, but those wins are rare under the tested setup.
+- A draw means the episode ended without a winner (truncation before either side scored).
+- The non-trivial draw rate indicates both agents can sustain long defensive exchanges in some matchups.
+- The longest rally reached `218` hits (the rally used for the tournament GIF artifact).
 
 ---
 
