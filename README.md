@@ -323,7 +323,7 @@ The replay buffer capacity $M$ is a critical hyperparameter for the off-policy A
 </p>
 
 **Plot description:**
-All three buffer sizes learn successfully. $M = 10000$ achieves the best final performance ($\approx 2500$ reward), while $M = 5000$ is close behind ($\approx 2000$). $M = 1024$ converges to slightly lower reward ($\approx 1950$). Larger buffers decorrelate mini-batches and improve training stability, but can slightly slow early-phase learning by mixing fresh transitions with older experience.
+All three buffer sizes learn successfully. $M = 10000$ achieves the best final performance ($\approx 2500$ reward), while $M = 5000$ is close behind ($\approx 2000$). $M = 1024$ converges to slightly lower reward ($\approx 1950$).
 
 <p align="center">
   <img src="./readme_nec/buffer_comparison_total_loss.png" alt="Buffer capacity sweep: total loss" width="700"/>
