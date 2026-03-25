@@ -402,3 +402,11 @@ HorizontalPong/
     ├── checkpoints/                   # Intermediate step_*.pt snapshots
     └── buffer_capacity_sweep/         # Per-capacity training outputs
 ```
+
+---
+
+## 8. Reproduction Instructions
+
+For full reproduction setup and launch commands (including Docker workflow), see:
+
+- `Launch.md`
