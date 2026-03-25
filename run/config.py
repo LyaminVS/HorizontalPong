@@ -14,9 +14,9 @@ class EnvConfig:
     height: int = 64
     paddle_width: int = 2
     paddle_height: int = 12
-    paddle_speed: int = 4
-    max_ball_speed_x: int = 4
-    max_ball_speed_y: int = 4
+    paddle_speed: int = 2
+    max_ball_speed_x: int = 2
+    max_ball_speed_y: int = 2
     random_bounce_prob: float = 1.0
     random_bounce_delta: int = 1
     left_x: int = 6

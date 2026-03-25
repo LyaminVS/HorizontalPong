@@ -338,7 +338,35 @@ This table summarizes the evaluation performance of the trained checkpoints unde
 
 ---
 
-## 5. Model Tournament
+## 5. Evaluation
+
+The following multi-episode evaluation was run with:
+
+- `--seed 0`
+- `--episodes 100`
+- `--max-steps 5000`
+- Environment parameters from `run/config.py`:
+  - `paddle_speed = 2`
+  - `max_ball_speed_x = 2`
+  - `max_ball_speed_y = 2`
+
+### 5.1 Evaluation Results (All Agents)
+
+| Agent | Mean Reward | Mean Hits | Max Hits | Mean Length (steps) |
+|------|-------------|-----------|----------|---------------------|
+| `reinforce` | `-4.000 ± 124.836` | `0.96` | `5` | `159.4` |
+| `reinforce_baseline` | `25.000 ± 143.788` | `1.25` | `6` | `194.5` |
+| `trpo` | `1260.000 ± 1132.961` | `13.51` | `44` | `1621.3` |
+| `actor_critic` | `4352.000 ± 1948.768` | `43.73` | `70` | `4408.0` |
+
+**Interpretation:**
+- Actor-Critic remains the strongest method under the updated speed settings, with the highest reward and hit count.
+- TRPO is clearly second-best and substantially outperforms both REINFORCE variants.
+- REINFORCE and REINFORCE-Baseline remain weak in this setting, with low average hits and short episodes compared to AC/TRPO.
+
+---
+
+## 6. Model Tournament
 
 We ran a head-to-head **PvP tournament** between the best TRPO and Actor-Critic checkpoints:
 
@@ -346,7 +374,7 @@ We ran a head-to-head **PvP tournament** between the best TRPO and Actor-Critic 
 python -m run.play_pvp --episodes 100
 ```
 
-### 5.1 Tournament Results (TRPO vs Actor-Critic)
+### 6.1 Tournament Results (TRPO vs Actor-Critic)
 
 | Metric | Value |
 |------|------|
@@ -366,7 +394,7 @@ python -m run.play_pvp --episodes 100
 
 ---
 
-## 6. Summary
+## 7. Summary
 
 This project compared four policy gradient methods on the Horizontal Pong environment. The key findings are:
 
@@ -382,7 +410,7 @@ This project compared four policy gradient methods on the Horizontal Pong enviro
 
 ---
 
-## 7. Repository Structure
+## 8. Repository Structure
 
 ```
 HorizontalPong/
@@ -427,7 +455,7 @@ HorizontalPong/
 
 ---
 
-## 8. Reproduction Instructions
+## 9. Reproduction Instructions
 
 For full reproduction setup and launch commands (including Docker workflow), see:
 
