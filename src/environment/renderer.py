@@ -58,6 +58,7 @@ class PongRenderer:
         self._screen = pygame.display.set_mode((self.width * self.scale, self.height * self.scale))
         pygame.display.set_caption("Horizontal Pong")
         self._font = pygame.font.SysFont("Arial", 12)
+        self._big_font = pygame.font.SysFont("Arial", 18, bold=True)
 
     def render_frame(
         self,
@@ -67,6 +68,7 @@ class PongRenderer:
         py_opponent: int,
         score_agent: int,
         score_opponent: int,
+        overlay_text: Optional[str] = None,
     ) -> None:
         """
         Draw a single game frame onto the pygame surface and flip the display.
@@ -91,7 +93,14 @@ class PongRenderer:
             score_opponent: opponent's current score.
         """
         self._draw_on_surface(
-            self._surface, bx, by, py_agent, py_opponent, score_agent, score_opponent
+            self._surface,
+            bx,
+            by,
+            py_agent,
+            py_opponent,
+            score_agent,
+            score_opponent,
+            overlay_text=overlay_text,
         )
         scaled = pygame.transform.scale(
             self._surface, (self.width * self.scale, self.height * self.scale)
@@ -108,6 +117,7 @@ class PongRenderer:
         py_opponent: int,
         score_agent: int,
         score_opponent: int,
+        overlay_text: Optional[str] = None,
     ) -> np.ndarray:
         """
         Draw a frame onto an off-screen surface and return it as a numpy array.
@@ -126,7 +136,14 @@ class PongRenderer:
         """
         offscreen = pygame.Surface((self.width, self.height))
         self._draw_on_surface(
-            offscreen, bx, by, py_agent, py_opponent, score_agent, score_opponent
+            offscreen,
+            bx,
+            by,
+            py_agent,
+            py_opponent,
+            score_agent,
+            score_opponent,
+            overlay_text=overlay_text,
         )
         arr = pygame.surfarray.array3d(offscreen)  # (W, H, 3)
         return np.transpose(arr, (1, 0, 2)).copy()  # (H, W, 3)
@@ -184,6 +201,7 @@ class PongRenderer:
         py_opponent: int,
         score_agent: int,
         score_opponent: int,
+        overlay_text: Optional[str] = None,
     ) -> None:
         """Draw current game state to a target surface."""
         black = (0, 0, 0)
@@ -218,7 +236,15 @@ class PongRenderer:
         pygame.draw.rect(surface, white, ball_rect)
 
         # Score.
-        score_text = f"{score_opponent} : {score_agent}"
+        # Show a single hits counter (agent side) on the left so it doesn't overlap
+        # with the dashed center line.
+        score_text = f"Hits: {score_agent}"
         text = self._font.render(score_text, True, white)
-        text_x = self.width // 2 - text.get_width() // 2
-        surface.blit(text, (text_x, 4))
+        surface.blit(text, (4, 4))
+
+        # Optional overlay message (e.g., "YOU WON").
+        if overlay_text:
+            msg = self._big_font.render(str(overlay_text), True, white)
+            msg_x = self.width // 2 - msg.get_width() // 2
+            msg_y = self.height // 2 - msg.get_height() // 2
+            surface.blit(msg, (msg_x, msg_y))

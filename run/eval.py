@@ -57,6 +57,12 @@ def parse_args() -> argparse.Namespace:
         help="Random seed."
     )
     parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=None,
+        help="Optional per-episode step limit (overrides env time limit for eval/recording).",
+    )
+    parser.add_argument(
         "--render", 
         action="store_true",
         help="Flag to enable live pygame rendering."
@@ -117,6 +123,7 @@ def get_deterministic_action(agent, state: np.ndarray) -> int:
 def evaluate(
     env: PongEnv, agent, num_episodes: int, max_hits: int = EvalConfig.max_hits,
     deterministic: bool = True,
+    max_steps: int | None = None,
 ) -> Dict[str, float]:
     """Run evaluation episodes and compute aggregate metrics."""
     rewards = []
@@ -127,6 +134,7 @@ def evaluate(
         state = env.reset()
         done = False
         ep_reward = 0.0
+        ep_steps = 0
 
         while not done:
             if deterministic:
@@ -136,7 +144,11 @@ def evaluate(
 
             state, reward, terminated, truncated, info = env.step(action)
             ep_reward += reward
-            done = terminated or info.get("hits", 0) >= max_hits
+            ep_steps += 1
+            if max_steps is not None and ep_steps >= max_steps:
+                done = True
+            else:
+                done = terminated or info.get("hits", 0) >= max_hits
 
         rewards.append(ep_reward)
         hits.append(info["hits"])
@@ -156,16 +168,22 @@ def record_rollout(
     agent,
     renderer: PongRenderer,
     filepath: str = "artifacts/rollout.gif",
+    max_steps: int | None = None,
 ) -> None:
     """Record a single evaluation episode and save as a GIF."""
     state = env.reset()
     done = False
     frames = []
+    ep_steps = 0
 
     while not done:
         action = get_deterministic_action(agent, state)
         state, reward, terminated, truncated, info = env.step(action)
-        done = terminated or info.get("hits", 0) >= EvalConfig.max_hits
+        ep_steps += 1
+        if max_steps is not None and ep_steps >= max_steps:
+            done = True
+        else:
+            done = terminated or info.get("hits", 0) >= EvalConfig.max_hits
 
         frame = renderer.capture_frame(
             bx=env.bx,
@@ -238,7 +256,7 @@ def main() -> None:
     # Mode 2: Silent Evaluation Metrics
     else:
         print(f"Running evaluation over {args.episodes} episodes...")
-        metrics = evaluate(env, agent, args.episodes, deterministic=True)
+        metrics = evaluate(env, agent, args.episodes, deterministic=True, max_steps=args.max_steps)
         print_metrics(metrics, args.agent)
 
     # Mode 3: Save a GIF
@@ -246,7 +264,7 @@ def main() -> None:
         print("Recording a GIF rollout...")
         renderer = PongRenderer()
         gif_path = f"artifacts/{args.agent}_rollout.gif"
-        record_rollout(env, agent, renderer, filepath=gif_path)
+        record_rollout(env, agent, renderer, filepath=gif_path, max_steps=args.max_steps)
         renderer.close()
 
 
