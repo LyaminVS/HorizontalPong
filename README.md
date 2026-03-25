@@ -247,7 +247,7 @@ The heatmap visualizes the greedy policy $\arg\max_a \pi(a \mid s)$ across a gri
 
 ### 4.1 Replay Buffer Capacity
 
-The replay buffer capacity $M$ is a critical hyperparameter for the off-policy Actor-Critic. A buffer that is too small may lead to overfitting on recent experience and correlated batches, while an excessively large buffer dilutes fresh high-reward transitions with stale data from an outdated policy. We sweep over $M \in \lbrace 256,\ 1024,\ 5000,\ 10000 \rbrace$ with all other hyperparameters fixed.
+The replay buffer capacity $M$ is a critical hyperparameter for the off-policy Actor-Critic. A buffer that is too small may lead to overfitting on recent experience and correlated batches, while an excessively large buffer dilutes fresh high-reward transitions with stale data from an outdated policy. We sweep over $M \in \lbrace 1024,\ 5000,\ 10000 \rbrace$ with all other hyperparameters fixed.
 
 <p align="center">
   <img src="./readme_nec/buffer_comparison_reward.png" alt="Buffer capacity sweep: reward" width="700"/>
@@ -257,17 +257,37 @@ The replay buffer capacity $M$ is a critical hyperparameter for the off-policy A
 </p>
 
 **Plot description:**
-The smallest buffer ($M = 256$) fails completely, producing negative mean reward throughout training — mini-batches are almost entirely composed of consecutive, highly correlated transitions, preventing meaningful gradient updates. Buffers of $M = 1024$ and $M = 5000$ both learn successfully, reaching $\approx 2000$ reward. The largest buffer ($M = 10000$) achieves the best final performance ($\approx 2500$ reward) by maximally decorrelating samples, though its early-phase learning is slightly slower because fresh high-reward experience is diluted by older transitions.
+All three buffer sizes learn successfully. $M = 10000$ achieves the best final performance ($\approx 2500$ reward), while $M = 5000$ is close behind ($\approx 2000$). $M = 1024$ converges to slightly lower reward ($\approx 1950$). Larger buffers decorrelate mini-batches and improve training stability, but can slightly slow early-phase learning by mixing fresh transitions with older experience.
 
 <p align="center">
-  <img src="./readme_nec/buffer_comparison_other_stats.png" alt="Buffer capacity sweep: hits and loss dynamics" width="700"/>
+  <img src="./readme_nec/buffer_comparison_actor_loss.png" alt="Buffer capacity sweep: actor loss" width="700"/>
 </p>
 <p align="center">
-  <em>Hits per episode and loss dynamics for different buffer capacities. Smaller buffers exhibit higher loss volatility due to correlated samples, while larger buffers produce smoother but potentially slower-converging training.</em>
+  <em>Actor loss dynamics for different buffer capacities.</em>
 </p>
 
 **Plot description:**
-The hits-per-episode curves mirror the reward trends: $M = 256$ never exceeds $\approx 0.2$ hits, while $M = 1024$ and $M = 5000$ reach $\approx 20$ hits and $M = 10000$ achieves $\approx 26$ hits. The loss dynamics reveal that smaller buffers produce highly volatile critic loss due to correlated mini-batches, whereas larger buffers yield smoother loss curves. Notably, $M = 256$ shows persistently high and erratic loss, confirming that the critic never learns a useful Q-function under extreme sample correlation.
+The actor loss curves differ in stability across capacities: larger buffers generally yield smoother trajectories due to less correlated mini-batches. Since the Actor-Critic actor objective directly depends on the critic's Q estimates, instability in the critic typically propagates to the actor as higher-variance updates.
+
+<p align="center">
+  <img src="./readme_nec/buffer_comparison_critic_loss.png" alt="Buffer capacity sweep: critic loss" width="700"/>
+</p>
+<p align="center">
+  <em>Critic loss (TD error) dynamics for different buffer capacities.</em>
+</p>
+
+**Plot description:**
+The critic loss is noticeably smoother for larger buffer capacities, consistent with improved sample diversity and reduced temporal correlation in mini-batches. Smaller buffers tend to produce noisier TD targets and higher-variance gradients, which manifests as a more oscillatory critic loss.
+
+<p align="center">
+  <img src="./readme_nec/buffer_comparison_total_loss.png" alt="Buffer capacity sweep: total loss" width="700"/>
+</p>
+<p align="center">
+  <em>Total loss dynamics for different buffer capacities.</em>
+</p>
+
+**Plot description:**
+The total loss largely tracks the critic loss because the critic MSE term dominates the joint objective. As buffer capacity increases, the total loss becomes smoother, indicating more stable optimization.
 
 ---
 
@@ -287,7 +307,7 @@ This project compared four policy gradient methods on the Horizontal Pong enviro
 
 3. **Vanilla REINFORCE methods struggle.** Both REINFORCE ($\approx 155$ reward, $\approx 2.5$ hits) and REINFORCE with Baseline ($\approx 232$ reward, $\approx 3.3$ hits) converge to weak policies. The EMA baseline provides a modest variance reduction but is insufficient to overcome the fundamental high-variance problem of Monte Carlo policy gradients in this environment with sparse $\pm 100$ rewards.
 
-4. **Replay buffer capacity is critical for Actor-Critic.** The ablation study shows that a buffer size of $M = 256$ causes complete training failure (negative mean reward) due to extreme sample correlation. Increasing capacity to $M = 1024$ or $M = 5000$ yields functional agents ($\approx 2000$ reward), and $M = 10000$ achieves the best ablation result ($\approx 2500$ reward, $\approx 26$ hits). Larger buffers decorrelate mini-batches and improve training stability, though they slightly slow convergence in the early phase by diluting fresh experience with older transitions.
+4. **Replay buffer capacity is critical for Actor-Critic.** In the sweep over $M \in \lbrace 1024,\ 5000,\ 10000 \rbrace$, all runs learn functional policies. $M = 10000$ achieves the best final performance ($\approx 2500$ reward, $\approx 26$ hits), while $M = 5000$ is close ($\approx 2000$ reward, $\approx 21$ hits) and $M = 1024$ converges slightly lower ($\approx 1950$ reward, $\approx 20$ hits). Larger buffers decorrelate mini-batches and improve training stability, but can slightly slow early-phase learning by mixing fresh transitions with older experience.
 
 5. **Off-policy learning with analytical gradients is the key advantage.** The Actor-Critic's analytical policy gradient (directly differentiating $\sum_a \pi(a|s) \cdot Q(s,a)$) avoids the high variance of log-probability-based estimators used in REINFORCE. Combined with the Expected-SARSA critic and entropy regularization, this yields stable, efficient learning even with a simple two-layer MLP architecture.
 
