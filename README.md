@@ -66,11 +66,8 @@ However, the full transition is **not deterministic** because random bounce pert
 2. **Ball advance**: $b_x \leftarrow b_x + v_x$, $b_y \leftarrow b_y + v_y$.
 3. **Wall bounce**: if $b_y \leq 0$ or $b_y \geq H{-}1$, the vertical velocity reverses ($v_y \leftarrow -v_y$) and $b_y$ is clamped.
 4. **Agent paddle hit**: swept collision detects whether the ball crossed the paddle x-line $x_R$ during this step. On hit, $v_x \leftarrow -|v_x|$ and parabolic angular deflection is applied (see below).
-<<<<<<< HEAD
 5. **Opponent paddle hit**: the left paddle follows a **hand-crafted heuristic** (predictive interception; see below), not a learned model. On deflection it may apply optional integer bounce noise controlled by $\sigma$ (default $0$).
-=======
-5. **Opponent paddle hit**: the left paddle (controlled by a rule-based algorythm) intercepts the ball and applies curriculum-controlled bounce noise.
->>>>>>> 48fce30d8cec02de340eb90124eabd04f1d9c419
+
 
 **Parabolic paddle deflection.** When the ball hits a paddle, the vertical velocity receives a quadratic boost depending on where on the paddle face the impact occurred. Let $\Delta = b_y - p_y$ be the signed offset from the paddle center, and $h = \lfloor \text{PH}/2 \rfloor$. The normalized impact parameter is:
 
@@ -85,6 +82,22 @@ Center hits produce near-zero deflection while edge hits produce maximum deflect
 $$v_y \leftarrow \text{clip}\left(\text{round}(v_y + \Delta v_y),\ -v_y^{\max},\ v_y^{\max}\right)$$
 
 **Stochastic bounce noise.** After each paddle hit, with probability $p_{\text{bounce}}$ (default 0.1), an additional random perturbation $\delta \sim \text{Uniform}(-1, 0, +1)$ is added to $v_y$. This makes the transitions stochastic even without opponent noise.
+
+**Formal transition distribution.** Let $s = (b_x, b_y, v_x, v_y, p_y)$ and $s' = (b_x', b_y', v_x', v_y', p_y')$. The paddle update $p_y' = f(p_y, a)$, ball advance, and wall-bounce rules are fully deterministic. The only randomness is the stochastic $v_y$ perturbation on paddle contact. Let $\bar{v}_y = \text{clip}(\text{round}(v_y + \Delta v_y),\, -v_y^{\max},\, v_y^{\max})$ be the deterministic post-deflection velocity. Then $v_y'$ is drawn as:
+
+$$v_y' = \bar{v}_y + \delta \cdot \mathbf{1}[U < p_{\text{bounce}}], \quad \delta \sim \text{Uniform}\{-1,\, 0,\, +1\}, \quad U \sim \text{Uniform}[0,1]$$
+
+clipped to $[-v_y^{\max},\, v_y^{\max}]$. All other components of $s'$ are determined by the physics above. Consequently, $P(s_{t+1} \mid s_t, a_t)$ is a **point mass** when no paddle contact occurs, and a distribution over **at most 3 next states** (differing only in $v_y'$) when a paddle contact occurs:
+
+$$P(s_{t+1} \mid s_t, a_t) = \begin{cases}
+\delta_{s^{\text{det}}} & \text{no paddle contact} \\[4pt]
+(1 - p_{\text{bounce}})\,\delta_{\bar{v}_y}(v_y')
+\;+\; \dfrac{p_{\text{bounce}}}{3}\sum_{k \in \{-1,\,0,\,+1\}} \delta_{\text{clip}(\bar{v}_y + k)}(v_y')
+& \text{paddle contact}
+\end{cases}$$
+
+where $s^{\text{det}}$ denotes the fully deterministic next state and $\delta_x$ is the Dirac delta (point mass) at $x$.
+
 
 ### Opponent
 
