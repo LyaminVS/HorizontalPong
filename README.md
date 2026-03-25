@@ -5,7 +5,7 @@
 **Horizontal Pong** is a discrete, episodic 2D Pong environment in which an RL agent controls the **right paddle** and must deflect a ball as many times as possible against a rule-based opponent on the left. The environment is implemented from scratch (no Gymnasium dependency) with integer-valued physics, swept collision detection, and a configurable opponent curriculum.
 
 <p align="center">
-  <img src="./readme_nec/actor_critic_rollout_v2.gif" alt="Trained agent playing Pong" width="500"/>
+  <img src="./readme_nec/actor_critic_rollout_v3.gif" alt="Trained agent playing Pong" width="500"/>
 </p>
 <p align="center">
   <em>Example gameplay of the trained Actor-Critic agent (right paddle) against the rule-based opponent (left paddle).</em>

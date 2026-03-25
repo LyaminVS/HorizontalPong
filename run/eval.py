@@ -72,6 +72,18 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Flag to save a GIF of one rollout."
     )
+    parser.add_argument(
+        "--gif-fps",
+        type=int,
+        default=EvalConfig.save_gif and None,
+        help="Override GIF FPS (frames per second). If omitted, uses RenderConfig.gif_fps.",
+    )
+    parser.add_argument(
+        "--gif-frame-skip",
+        type=int,
+        default=EvalConfig.save_gif and None,
+        help="Only record every Nth env step into the GIF. If omitted, uses RenderConfig.gif_frame_skip.",
+    )
     return parser.parse_args()
 
 
@@ -169,33 +181,46 @@ def record_rollout(
     renderer: PongRenderer,
     filepath: str = "artifacts/rollout.gif",
     max_steps: int | None = None,
+    gif_fps: int | None = None,
+    gif_frame_skip: int | None = None,
 ) -> None:
     """Record a single evaluation episode and save as a GIF."""
     state = env.reset()
     done = False
     frames = []
     ep_steps = 0
+    step_idx = 0
+
+    # Fallback to config defaults if not provided.
+    from run.config import RenderConfig
+    if gif_fps is None:
+        gif_fps = RenderConfig.gif_fps
+    if gif_frame_skip is None:
+        gif_frame_skip = RenderConfig.gif_frame_skip
+    gif_frame_skip = max(1, int(gif_frame_skip))
 
     while not done:
         action = get_deterministic_action(agent, state)
         state, reward, terminated, truncated, info = env.step(action)
         ep_steps += 1
+        step_idx += 1
         if max_steps is not None and ep_steps >= max_steps:
             done = True
         else:
             done = terminated or info.get("hits", 0) >= EvalConfig.max_hits
 
-        frame = renderer.capture_frame(
-            bx=env.bx,
-            by=env.by,
-            py_agent=env.py,
-            py_opponent=env.ly,
-            score_agent=info["hits"],
-            score_opponent=0,
-        )
-        frames.append(frame)
+        if step_idx % gif_frame_skip == 0 or done:
+            frame = renderer.capture_frame(
+                bx=env.bx,
+                by=env.by,
+                py_agent=env.py,
+                py_opponent=env.ly,
+                score_agent=info["hits"],
+                score_opponent=0,
+            )
+            frames.append(frame)
 
-    renderer.save_gif(frames, filepath)
+    renderer.save_gif(frames, filepath, fps=int(gif_fps))
     print(f"Rollout saved successfully to {filepath}")
 
 
@@ -264,7 +289,15 @@ def main() -> None:
         print("Recording a GIF rollout...")
         renderer = PongRenderer()
         gif_path = f"artifacts/{args.agent}_rollout.gif"
-        record_rollout(env, agent, renderer, filepath=gif_path, max_steps=args.max_steps)
+        record_rollout(
+            env,
+            agent,
+            renderer,
+            filepath=gif_path,
+            max_steps=args.max_steps,
+            gif_fps=args.gif_fps,
+            gif_frame_skip=args.gif_frame_skip,
+        )
         renderer.close()
 
 

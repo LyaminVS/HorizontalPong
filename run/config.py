@@ -109,7 +109,7 @@ class RenderConfig:
     scale: int = 4
     fps: int = 60
     gif_fps: int = 60
-    gif_frame_skip: int = 2
+    gif_frame_skip: int = 6
 
 
 @dataclass
