@@ -25,7 +25,8 @@ $$s = \left(\frac{b_x}{W},\ \frac{b_y}{H},\ \frac{v_x}{v_x^{\max}},\ \frac{v_y}{
 | $v_y$ | $-v_y^{\max} \ldots +v_y^{\max}$ | Ball vertical velocity |
 | $p_y$ | $\text{PH}/2 \ldots H{-}1{-}\text{PH}/2$ | Agent paddle vertical center |
 
-Default dimensions: $W = 86$, $H = 64$, $\text{PH} = 12$, $v_x^{\max} = 4$, $v_y^{\max} = 4$.
+Here $\text{PH}$ is the full paddle height (in pixels).  
+Default dimensions: $W = 86$, $H = 64$, $\text{PH} = 12$, $v_x^{\max} = 2$, $v_y^{\max} = 2$.
 
 ### Action Space
 
@@ -37,13 +38,18 @@ $$\mathcal{A} = \lbrace 0,\ 1,\ 2 \rbrace$$
 | 1 | Down | $p_y \leftarrow p_y + \text{speed}$, clamped at $H{-}1{-}\text{PH}/2$ |
 | 2 | Stay | No change |
 
+Default movement/velocity parameters used in the current config:
+- `paddle_speed = 2` (this is `speed` in the action update above)
+- `max_ball_speed_x = 2`
+- `max_ball_speed_y = 2`
+
 ### Transition Function
 
-The environment is **deterministic**. We write the transition mapping as:
+The transition is represented as a conditional distribution:
 
-$$s_{t+1} = T(s_t, a_t)$$
+$$P(s_{t+1}\mid s_t, a_t)$$
 
-In this implementation, the only branching is due to the discrete action $a_t \in \lbrace 0,1,2 \rbrace$ (up / down / stay). The paddle update inside $T$ is:
+The paddle-update component is:
 
 $$p_y' = \begin{cases}
 \max(p_y - \text{speed},\ \text{PH}/2) & a_t = 0 \\\\
@@ -51,8 +57,10 @@ $$p_y' = \begin{cases}
 p_y & a_t = 2
 \end{cases}$$
 
-After this action-dependent paddle update, all remaining parts of $T$ are deterministic physics (ball advance, wall bounce, swept paddle collisions, and parabolic deflection).  
-In short: **deterministic core dynamics + optional stochastic bounce noise**.
+where $p_y$ is the current agent paddle center and $p_y'$ is the next-step paddle center after applying action $a_t$.
+
+After this action-dependent paddle update, the ball and collision dynamics follow the environment physics.
+However, the full transition is **not deterministic** because random bounce perturbations can modify $v_y$ stochastically on paddle contacts.
 
 1. **Paddle update**: agent paddle moves according to the selected action, clamped to valid vertical range.
 2. **Ball advance**: $b_x \leftarrow b_x + v_x$, $b_y \leftarrow b_y + v_y$.
@@ -92,51 +100,53 @@ The opponent adds integer noise $\delta \sim \text{Uniform}(-\sigma \ldots +\sig
 
 $$r(s, a) = \begin{cases} +100 & \text{if agent paddle deflects the ball} \\\\ -100 & \text{if ball exits on the agent side } (b_x \geq W) \\\\ 0 & \text{otherwise} \end{cases}$$
 
-**Optional dense reward shaping** (active when $v_x > 0$, i.e. ball approaching agent):
-
-$$r_{\text{dense}} = -\alpha \cdot \frac{|p_y - b_y|}{H}$$
-
-where $\alpha$ decays linearly from $\alpha_0 = 0.01$ to $0$ over the first $100\text{k}$ global steps. This encourages the paddle to track the ball early in training, then fades to let the agent optimize the true sparse objective.
-
 ---
 
 ## 2. Algorithms
 
-We implement and compare four policy gradient methods. All share the same observation/action interface. The on-policy agents (REINFORCE, REINFORCE-Baseline, TRPO) use an identical two-layer MLP policy:
-
-$$\text{state}\ (5) \to \text{Linear}(256) \to \text{ReLU} \to \text{Linear}(256) \to \text{ReLU} \to \text{Linear}(3) \to \text{logits}$$
+We implement and compare four policy-gradient methods. All share the same observation/action interface.
 
 ### 2.1 REINFORCE
 
-The simplest Monte Carlo policy gradient method. After collecting a batch of $K = 10$ complete episodes, the agent computes discounted returns $G_t = \sum_{k=0}^{T-t-1} \gamma^k r_{t+k}$ and performs one gradient step:
+The simplest Monte Carlo policy-gradient method. After collecting a batch of $K = 10$ complete episodes, the agent computes discounted returns
 
-$$\nabla_\theta J(\theta) = \frac{1}{|\mathcal{B}|}\sum_{(s_t, a_t, G_t) \in \mathcal{B}} \nabla_\theta \log \pi_\theta(a_t | s_t) \cdot \hat{G}_t$$
+$$g_t = \sum_{k=0}^{T-t-1} \gamma^k r_{t+k}$$
 
-where $\hat{G}_t = G_t / (\text{std}(G) + \varepsilon)$ is std-normalized (**no baseline** — no mean subtraction). An entropy bonus with coefficient $\beta = 0.01$ encourages exploration. Gradients are clipped to norm $1.0$.
+and performs one gradient step:
+
+$$\nabla_\theta J(\theta) = \frac{1}{|\mathcal{B}|}\sum_{(s_t, a_t, g_t) \in \mathcal{B}} \nabla_\theta \log \pi_\theta(a_t | s_t) \cdot g_t$$
+
+An entropy bonus with coefficient $\beta = 0.01$ encourages exploration. Gradients are clipped to norm $1.0$.
 
 ### 2.2 REINFORCE with Baseline
 
 Identical to REINFORCE but subtracts an **exponential moving average (EMA)** of episode returns as a heuristic baseline:
 
-$$b \leftarrow 0.99 \cdot b + 0.01 \cdot \bar{G}_{\text{episode}}$$
+$$b \leftarrow 0.99 \cdot b + 0.01 \cdot \bar{g}_{\text{episode}}$$
 
-The advantage $A_t = G_t - b$ replaces $G_t$ in the policy gradient, followed by std-normalization. This reduces variance without introducing a learned value function. The baseline scalar is persisted across checkpoints.
+Here $\bar{g}_{\text{episode}}$ is the mean return over timesteps inside one episode:
+
+$$\bar{g}_{\text{episode}} = \frac{1}{T}\sum_{t=0}^{T-1} g_t$$
+
+The advantage $A_t = g_t - b$ replaces $g_t$ in the policy gradient. This reduces variance without introducing a learned value function. The baseline scalar is persisted across checkpoints.
 
 ### 2.3 TRPO
 
-Trust Region Policy Optimization constrains each policy update to stay within a KL divergence trust region, preventing catastrophically large steps. Our implementation uses **no value network** — advantages are computed from normalized Monte Carlo returns (mean-subtracted, std-normalized).
+Trust Region Policy Optimization constrains each policy update to stay within a KL-divergence trust region, preventing catastrophically large steps. Our implementation uses **no value network**.
 
 The update follows the standard TRPO procedure:
 
-1. Compute the **surrogate objective** with importance sampling ratio and entropy bonus:
+1. Compute the **surrogate objective** with importance-sampling ratio and entropy bonus:
 
-$$L(\theta) = \hat{\mathbb{E}}\left[\frac{\pi_\theta(a|s)}{\pi_{\theta_{\text{old}}}(a|s)} \hat{A}(s,a)\right] + \beta \cdot H(\pi_\theta)$$
+$$L(\theta) = \hat{\mathbb{E}}\left[\frac{\pi_\theta(A\mid S)}{\pi_{\theta_{\text{old}}}(A\mid S)} \hat{A}(S,A)\right] + \beta \cdot H(\pi_\theta)$$
 
 2. Compute the **policy gradient** $g = \nabla_\theta L(\theta)$, clipped to norm $\leq 3.0$.
 
-3. Find the **natural gradient direction** via the **conjugate gradient** algorithm (10 iterations) on the Fisher information matrix, with damping $0.05$:
+3. Find the **natural gradient direction** via the **conjugate-gradient** algorithm (10 iterations) on the Fisher information matrix, with damping $0.05$:
 
 $$Fd = -g, \quad \text{then scale } d \text{ so that } \tfrac{1}{2} d^T F d = \delta_{\text{KL}}$$
+
+Here $g$ is the policy-gradient vector of the surrogate objective with respect to policy parameters, and $F$ is the Fisher-information matrix.
 
 4. **Line search** with backtracking (up to 10 steps, factor $0.8$) to ensure $\text{KL}(\pi_{\theta_{\text{old}}} \| \pi_\theta) \leq \delta_{\text{KL}}$ and the surrogate improves. Default trust region size: $\delta_{\text{KL}} = 0.001$.
 
@@ -154,7 +164,7 @@ $$\phi(s) \to \text{Actor head: Linear}(3) \to \text{logits } \in \mathbb{R}^{|\
 
 $$\phi(s) \to \text{Critic head: Linear}(3) \to Q(s, \cdot) \in \mathbb{R}^{|\mathcal{A}|}$$
 
-The shared backbone forces the actor and critic to develop a common state representation, which improves gradient flow and makes learning more stable. Orthogonal initialization is applied: the backbone uses gain $\sqrt{2}$, the actor head uses gain $0.01$ (near-uniform initial policy), and the critic head uses gain $1.0$.
+The shared backbone forces the actor and critic to develop a common state representation, which improves gradient flow and stabilizes optimization.
 
 #### Off-Policy Learning Pipeline
 
@@ -162,13 +172,14 @@ Transitions $(s, a, r, s', \text{done})$ are stored in a **circular replay buffe
 
 #### Critic Loss (Expected-SARSA TD Target)
 
-The critic learns $Q(s, a)$ via one-step TD error. The target uses the current policy probabilities to compute the expected next-state value:
+The critic learns $Q(s, a)$ via one-step TD error. The target uses current policy probabilities to compute the expected next-state value:
 
 $$V^{\pi}(s') = \sum_{a'} \pi(a' | s') \cdot Q(s', a')$$
 
 $$L_{\text{critic}} = \frac{1}{B}\sum_{i=1}^{B}\left(Q(s_i, a_i) - \left[r_i + \gamma (1 - d_i) \cdot V^{\pi}(s_i')\right]\right)^2$$
 
-This is the Expected-SARSA formulation: instead of bootstrapping from $Q(s', a')$ for a single sampled $a'$, we take an expectation over all actions under the current policy. This reduces variance compared to standard SARSA while maintaining an on-policy target for the critic.
+This is the Expected-SARSA formulation: instead of bootstrapping from $Q(s', a')$ for one sampled $a'$, we take an expectation over all actions under the current policy.  
+In implementation, this target is computed under `no_grad` (from the model state before the optimizer step), then used as a fixed regression target for the critic update.
 
 #### Actor Loss (Analytical Policy Gradient)
 
@@ -192,15 +203,47 @@ All three loss components are optimized jointly by a single Adam optimizer on th
 
 $$L = c_{\text{critic}} \cdot L_{\text{critic}} + L_{\text{actor}} + c_{\text{entropy}} \cdot L_{\text{entropy}}$$
 
-with default coefficients $c_{\text{critic}} = 1.0$ and $c_{\text{entropy}} = 0.1$. Global gradient clipping (max norm $1.0$) is applied before the optimizer step.
+with default coefficients $c_{\text{critic}} = 1.0$ and $c_{\text{entropy}} = 0.1$. Global gradient clipping (max norm $1.0$) is applied before the optimizer step.  
+The learning rate is scheduled with cosine decay (with optional warmup) during training.
 
-#### Learning Rate Schedule
+#### Actor-Critic Pseudocode
 
-The learning rate follows a **cosine decay** from $\text{lr}_{\max}$ to $\text{lr}_{\min}$, with an optional linear warmup phase:
+```text
+Initialize actor-critic network parameters θ
+Initialize replay buffer D with capacity M
 
-$$\text{lr}(t) = \begin{cases} \text{lr}_{\min} + (\text{lr}_{\max} - \text{lr}_{\min}) \cdot \frac{t}{T_{\text{warmup}}} & \text{if } t < T_{\text{warmup}} \\\\ \text{lr}_{\min} + \frac{1}{2}(\text{lr}_{\max} - \text{lr}_{\min})\left(1 + \cos\left(\pi \cdot \frac{t - T_{\text{warmup}}}{T_{\text{decay}} - T_{\text{warmup}}}\right)\right) & \text{otherwise} \end{cases}$$
+for environment step t = 1..T:
+    Observe state s_t
+    Sample action a_t ~ π_θ(. | s_t)
+    Step environment -> (s_{t+1}, r_t, done_t)
+    Store (s_t, a_t, r_t, s_{t+1}, done_t) in D
 
-This prevents late-training instability by gradually reducing the step size as the policy approaches convergence.
+    if t % update_every == 0 and |D| >= batch_size:
+        Sample mini-batch B from D
+
+        # Critic target (no gradient through target branch)
+        with no_grad:
+            logits_next = actor(s')
+            probs_next = softmax(logits_next)
+            q_next_all = critic(s')
+            v_next = sum_a probs_next(a) * q_next_all(a)
+            y = r + γ * (1 - done) * v_next
+
+        critic_loss = MSE(Q(s, a), y)
+
+        # Actor objective with detached Q-values
+        probs = softmax(actor(s))
+        q_all = detach(critic(s))
+        actor_loss = -mean(sum_a probs(a) * q_all(a))
+
+        entropy_loss = mean(sum_a probs(a) * log probs(a))
+        total_loss = c_critic * critic_loss + actor_loss + c_entropy * entropy_loss
+
+        Backprop(total_loss), gradient clipping, optimizer step
+        Update learning rate by cosine schedule
+
+    if done_t: reset environment
+```
 
 ### 2.5 Hyperparameters (Documented Defaults)
 
@@ -209,8 +252,8 @@ Main defaults used in experiments (from `run/config.py`):
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `width`, `height` | `86`, `64` | Environment field size (pixels). |
-| `paddle_height`, `paddle_speed` | `12`, `3` | Agent paddle size and movement speed per step. |
-| `max_ball_speed_x`, `max_ball_speed_y` | `4`, `4` | Maximum absolute horizontal/vertical ball velocity. |
+| `paddle_height`, `paddle_speed` | `12`, `2` | Agent paddle size and movement speed per step. |
+| `max_ball_speed_x`, `max_ball_speed_y` | `2`, `2` | Maximum absolute horizontal/vertical ball velocity. |
 | `t_max` | `5000` | Episode truncation limit (max environment steps). |
 | `total_steps` | `500000` | Number of environment steps in one training run. |
 | `seed`, `device` | `42`, `cpu` | Random seed and compute device. |
@@ -253,6 +296,8 @@ Actor-Critic (off-policy) dominates all other methods, reaching a mean reward of
 The critic loss (TD error) spikes early as the Q-function bootstraps from random values, then gradually decreases as the critic converges. The actor loss (negative expected Q-value) trends downward over training, reflecting that the policy learns to select actions with increasingly high Q-values. The total loss combines both components and mirrors the critic loss profile, since the critic term dominates the combined objective.
 
 ### 3.3 Actor-Critic Policy Visualization
+
+To reproduce and explore this map interactively (sliders for ball $x$, $v_x$, $v_y$), open [`analysis/policy_decision_map.ipynb`](./analysis/policy_decision_map.ipynb).
 
 <p align="center">
   <img src="./readme_nec/heatmap1.png" alt="Actor-Critic policy decision map" width="700"/>
@@ -396,17 +441,17 @@ python -m run.play_pvp --episodes 100
 
 ## 7. Summary
 
-This project compared four policy gradient methods on the Horizontal Pong environment. The key findings are:
+This project compares four policy-gradient agents on Horizontal Pong. The README documents **sparse $\pm 100$ rewards only** (no dense shaping), **stochastic transitions** when bounce noise perturbs $v_y$, and the current default dynamics (`paddle_speed` and ball speed caps set to $2$ in `run/config.py`). The main takeaways:
 
-1. **Actor-Critic is the clear winner.** The off-policy Actor-Critic agent with a shared backbone achieves an average reward of $\approx 3200$ and sustains rallies of $\approx 33$ hits per episode, far surpassing all other methods. Its ability to reuse experience through a replay buffer makes it dramatically more sample-efficient — it reaches high performance within $\sim 1200$ episodes, while the on-policy methods require thousands more episodes yet converge to much lower scores.
+1. **Actor-Critic is strongest in both rollout evaluation and head-to-head play.** Under `run.eval` with `--seed 0`, `--episodes 100`, `--max-steps 5000` and the speeds above, Actor-Critic averages $\approx 4352$ reward and $\approx 43.7$ hits per episode (max $70$ in the run), with long episodes ($\approx 4408$ steps on average). In the **PvP tournament** (Section 6), Actor-Critic wins $85\%$ of $100$ matches against TRPO. Together, this shows a large gap between off-policy AC and the on-policy baselines in this setup.
 
-2. **TRPO is a solid second.** Trust Region Policy Optimization reaches $\approx 1700$ reward and $\approx 17$ hits per episode. The constrained policy updates prevent catastrophic collapses, producing stable, monotonic improvement. However, its on-policy nature limits sample efficiency compared to Actor-Critic.
+2. **TRPO is a clear second.** The same evaluation run gives TRPO $\approx 1260$ mean reward, $\approx 13.5$ mean hits, and noticeably higher variance than Actor-Critic. Trust-region updates keep learning stable, but sample efficiency and final policy quality stay below Actor-Critic.
 
-3. **Vanilla REINFORCE methods struggle.** Both REINFORCE ($\approx 155$ reward, $\approx 2.5$ hits) and REINFORCE with Baseline ($\approx 232$ reward, $\approx 3.3$ hits) converge to weak policies. The EMA baseline provides a modest variance reduction but is insufficient to overcome the fundamental high-variance problem of Monte Carlo policy gradients in this environment with sparse $\pm 100$ rewards.
+3. **REINFORCE and REINFORCE-Baseline remain weak here.** With the same evaluation protocol, mean hits stay near $1$ and episodes end early; the EMA baseline does not close the gap to AC/TRPO. Monte Carlo policy gradients on sparse terminal-style rewards stay high-variance relative to bootstrapped $Q$-learning.
 
-4. **Replay buffer capacity is critical for Actor-Critic.** In the sweep over $M \in \lbrace 1024,\ 5000,\ 10000 \rbrace$, all runs learn functional policies. $M = 10000$ achieves the best final performance ($\approx 2500$ reward, $\approx 26$ hits), while $M = 5000$ is close ($\approx 2000$ reward, $\approx 21$ hits) and $M = 1024$ converges slightly lower ($\approx 1950$ reward, $\approx 20$ hits). Larger buffers decorrelate mini-batches and improve training stability, but can slightly slow early-phase learning by mixing fresh transitions with older experience.
+4. **Replay-buffer size matters for Actor-Critic.** The buffer sweep (Section 4.1) shows that larger capacities ($10000$ best among $\lbrace 1024, 5000, 10000\rbrace$) improve final reward and stability by decorrelating batches, at some cost to early learning when old transitions dominate.
 
-5. **Off-policy learning with analytical gradients is the key advantage.** The Actor-Critic's analytical policy gradient (directly differentiating $\sum_a \pi(a|s) \cdot Q(s,a)$) avoids the high variance of log-probability-based estimators used in REINFORCE. Combined with the Expected-SARSA critic and entropy regularization, this yields stable, efficient learning even with a simple two-layer MLP architecture.
+5. **Algorithm design matches the ranking.** Actor-Critic reuses data from a replay buffer, trains the critic with an Expected-SARSA-style TD target, and updates the actor with an analytical gradient through $\sum_a \pi(a|s)\,Q(s,a)$ (with $Q$ detached for the actor term). Training curves (Section 3) and the interactive policy map (`analysis/policy_decision_map.ipynb`) align with an interception-style policy for the best checkpoint.
 
 ---
 
