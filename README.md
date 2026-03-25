@@ -232,7 +232,7 @@ The critic loss (TD error) spikes early as the Q-function bootstraps from random
 ### 3.3 Actor-Critic Policy Visualization
 
 <p align="center">
-  <img src="./readme_nec/policy_decision_map.png" alt="Actor-Critic policy decision map" width="700"/>
+  <img src="./readme_nec/heatmap1.jpg" alt="Actor-Critic policy decision map" width="700"/>
 </p>
 <p align="center">
   <em>Policy decision map for the trained Actor-Critic agent. Each cell shows the preferred action (up/down/stay) as a function of agent paddle position (y-axis) and ball position (x-axis), for a fixed ball velocity. The map reveals the learned interception strategy: the agent moves toward the ball when it is approaching and stays otherwise.</em>
