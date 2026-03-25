@@ -425,7 +425,7 @@ python -m run.play_pvp --episodes 100
 
 This project compares four policy-gradient agents on Horizontal Pong. The README documents **sparse $\pm 100$ rewards only** (no dense shaping), **stochastic transitions** when bounce noise perturbs $v_y$, and the current default dynamics (`paddle_speed` and ball speed caps set to $2$ in `run/config.py`). The main takeaways:
 
-1. **Actor-Critic is strongest in both rollout evaluation and head-to-head play.** Under `run.eval` with `--seed 0`, `--episodes 100`, `--max-steps 5000` and the speeds above, Actor-Critic averages $\approx 4352$ reward and $\approx 43.7$ hits per episode (max $70$ in the run), with long episodes ($\approx 4408$ steps on average). In the **PvP tournament** (Section 6), Actor-Critic wins $85\%$ of $100$ matches against TRPO. Together, this shows a large gap between off-policy AC and the on-policy baselines in this setup.
+1. **Actor-Critic is strongest in both rollout evaluation and head-to-head play.** Under `run.eval`, `--episodes 100`, `--max-steps 5000` and the speeds above, Actor-Critic averages $\approx 4352$ reward and $\approx 43.7$ hits per episode (max $70$ in the run), with long episodes ($\approx 4408$ steps on average). In the **PvP tournament** (Section 6), Actor-Critic wins $85\%$ of $100$ matches against TRPO. Together, this shows a large gap between off-policy AC and the on-policy baselines in this setup.
 
 2. **TRPO is a clear second.** The same evaluation run gives TRPO $\approx 1260$ mean reward, $\approx 13.5$ mean hits, and noticeably higher variance than Actor-Critic. Trust-region updates keep learning stable, but sample efficiency and final policy quality stay below Actor-Critic.
 
