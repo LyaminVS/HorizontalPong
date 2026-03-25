@@ -2,13 +2,13 @@
 
 ## 1. Task Description
 
-**Horizontal Pong** is a discrete, episodic 2D Pong environment in which an RL agent controls the **right paddle** and must deflect a ball as many times as possible against a rule-based opponent on the left. The environment is implemented from scratch (no Gymnasium dependency) with integer-valued physics, swept collision detection, and a configurable opponent curriculum.
+**Horizontal Pong** is a discrete, episodic 2D Pong environment in which an RL agent controls the **right paddle** and must deflect a ball as many times as possible against a **fixed heuristic opponent** on the left (hand-written rules, not a learned policy). The environment is implemented from scratch (no Gymnasium dependency) with integer-valued physics and swept collision detection.
 
 <p align="center">
   <img src="./readme_nec/actor_critic_rollout_v3.gif" alt="Trained agent playing Pong" width="500"/>
 </p>
 <p align="center">
-  <em>Example gameplay of the trained Actor-Critic agent (right paddle) against the rule-based opponent (left paddle).</em>
+  <em>Example gameplay of the trained Actor-Critic agent (right paddle) against the heuristic opponent (left paddle).</em>
 </p>
 
 ### State Space
@@ -66,7 +66,7 @@ However, the full transition is **not deterministic** because random bounce pert
 2. **Ball advance**: $b_x \leftarrow b_x + v_x$, $b_y \leftarrow b_y + v_y$.
 3. **Wall bounce**: if $b_y \leq 0$ or $b_y \geq H{-}1$, the vertical velocity reverses ($v_y \leftarrow -v_y$) and $b_y$ is clamped.
 4. **Agent paddle hit**: swept collision detects whether the ball crossed the paddle x-line $x_R$ during this step. On hit, $v_x \leftarrow -|v_x|$ and parabolic angular deflection is applied (see below).
-5. **Opponent paddle hit**: the left paddle (controlled by a rule-based AI) intercepts the ball and applies curriculum-controlled bounce noise.
+5. **Opponent paddle hit**: the left paddle follows a **hand-crafted heuristic** (predictive interception; see below), not a learned model. On deflection it may apply optional integer bounce noise controlled by $\sigma$ (default $0$).
 
 **Parabolic paddle deflection.** When the ball hits a paddle, the vertical velocity receives a quadratic boost depending on where on the paddle face the impact occurred. Let $\Delta = b_y - p_y$ be the signed offset from the paddle center, and $h = \lfloor \text{PH}/2 \rfloor$. The normalized impact parameter is:
 
@@ -84,7 +84,7 @@ $$v_y \leftarrow \text{clip}\left(\text{round}(v_y + \Delta v_y),\ -v_y^{\max},\
 
 ### Opponent
 
-The left paddle is controlled by a `LeftPaddleOpponent` that uses **predictive interception**: when the ball moves toward it ($v_x < 0$), the opponent simulates the ball trajectory forward (including wall bounces) to predict the intercept $y$-coordinate at the paddle line, then moves toward that $y$ at `paddle_speed`. When the ball moves away, the opponent drifts toward field center.
+The left paddle is controlled by a `LeftPaddleOpponent`: a **deterministic-style scripted controller** (not an RL-trained policy). It uses **predictive interception**: when the ball moves toward it ($v_x < 0$), the script simulates the ball trajectory forward (including wall bounces) to predict the intercept $y$-coordinate at the paddle line, then moves toward that $y$ at `paddle_speed`. When the ball moves away, it drifts toward field center.
 
 The opponent adds integer noise $\delta \sim \text{Uniform}(-\sigma \ldots +\sigma)$ to $v_y$ upon deflection, where $\sigma$ is a fixed parameter (default $\sigma = 0$, i.e. no noise).
 
@@ -310,34 +310,14 @@ The replay buffer capacity $M$ is a critical hyperparameter for the off-policy A
 All three buffer sizes learn successfully. $M = 10000$ achieves the best final performance ($\approx 2500$ reward), while $M = 5000$ is close behind ($\approx 2000$). $M = 1024$ converges to slightly lower reward ($\approx 1950$). Larger buffers decorrelate mini-batches and improve training stability, but can slightly slow early-phase learning by mixing fresh transitions with older experience.
 
 <p align="center">
-  <img src="./readme_nec/buffer_comparison_actor_loss.png" alt="Buffer capacity sweep: actor loss" width="700"/>
-</p>
-<p align="center">
-  <em>Actor loss dynamics for different buffer capacities.</em>
-</p>
-
-**Plot description:**
-The actor loss curves differ in stability across capacities: larger buffers generally yield smoother trajectories due to less correlated mini-batches. Since the Actor-Critic actor objective directly depends on the critic's Q estimates, instability in the critic typically propagates to the actor as higher-variance updates.
-
-<p align="center">
-  <img src="./readme_nec/buffer_comparison_critic_loss.png" alt="Buffer capacity sweep: critic loss" width="700"/>
-</p>
-<p align="center">
-  <em>Critic loss (TD error) dynamics for different buffer capacities.</em>
-</p>
-
-**Plot description:**
-The critic loss is noticeably smoother for larger buffer capacities, consistent with improved sample diversity and reduced temporal correlation in mini-batches. Smaller buffers tend to produce noisier TD targets and higher-variance gradients, which manifests as a more oscillatory critic loss.
-
-<p align="center">
   <img src="./readme_nec/buffer_comparison_total_loss.png" alt="Buffer capacity sweep: total loss" width="700"/>
 </p>
 <p align="center">
-  <em>Total loss dynamics for different buffer capacities.</em>
+  <em>Total training loss (critic + actor + entropy terms) for different replay buffer capacities.</em>
 </p>
 
 **Plot description:**
-The total loss largely tracks the critic loss because the critic MSE term dominates the joint objective. As buffer capacity increases, the total loss becomes smoother, indicating more stable optimization.
+We report only the **combined** objective: larger buffers tend to produce smoother total-loss curves, consistent with less correlated mini-batches and stabler TD bootstrapping. Because the critic term usually dominates the sum, the total loss mainly reflects critic-side noise and its coupling to the actor through shared features; a single joint plot is enough to compare optimization stability across $M$.
 
 ### 4.2 Hidden Dimension (256 vs 128 vs 64) — Actor-Critic
 
@@ -447,7 +427,7 @@ HorizontalPong/
 │   ├── environment/
 │   │   ├── __init__.py
 │   │   ├── pong_env.py                # PongEnv: reset, step, seed, reward, transitions
-│   │   ├── opponent.py                # LeftPaddleOpponent: predictive AI + curriculum
+│   │   ├── opponent.py                # LeftPaddleOpponent: heuristic predictive opponent
 │   │   └── renderer.py               # PongRenderer: Pygame display, frame capture, GIF export
 │   └── agent/
 │       ├── __init__.py
