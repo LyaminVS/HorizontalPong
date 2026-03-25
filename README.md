@@ -287,8 +287,6 @@ To reproduce and explore this map interactively (sliders for ball $x$, $v_x$, $v
   <img src="./readme_nec/heatmap1.png" alt="Actor-Critic policy decision map" width="700"/>
 </p>
 <p align="center">
-  <em>Policy decision map for the trained Actor-Critic agent. Each cell shows the preferred action (up/down/stay) as a function of agent paddle position (x-axis: `py`) and ball position (y-axis: `by`) for a fixed ball velocity. The map shows a clear interception rule: move toward the ball when misaligned and stay near the diagonal where `py \approx by`.</em>
-</p>
 
 **Plot description:**
 The heatmap visualizes the greedy policy $\arg\max_a \pi(a \mid s)$ across a grid of (ball $y$, paddle $y$) positions for a fixed velocity. The decision boundary is concentrated around the diagonal: in one half-plane the policy chooses one movement direction, in the opposite half-plane it chooses the reverse direction, and near the diagonal it mostly selects "Stay". This matches an interception controller that reduces vertical misalignment and stabilizes once aligned.
