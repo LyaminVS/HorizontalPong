@@ -37,7 +37,13 @@ $$\mathcal{A} = \lbrace 0,\ 1,\ 2 \rbrace$$
 | 1 | Down | $p_y \leftarrow p_y + \text{speed}$, clamped at $H{-}1{-}\text{PH}/2$ |
 | 2 | Stay | No change |
 
-### Transition Dynamics
+### Transition Function
+
+The environment defines a transition function
+
+$$p(s' \mid s_t, a_t)$$
+
+that maps the current state $s_t$ and action $a_t$ to a distribution over next states $s'$. The transitions are **nearly deterministic** — they are fully determined by integer-valued physics rules — with a small stochastic component introduced by the optional bounce noise (see below).
 
 Each environment step proceeds as follows:
 
@@ -203,7 +209,7 @@ This prevents late-training instability by gradually reducing the step size as t
 </p>
 
 **Plot description:**
-TODO
+Actor-Critic (off-policy) dominates all other methods, reaching a mean reward of $\approx 3200$ within $\sim 1200$ episodes and sustaining $\approx 33$ hits per episode. TRPO is the second-best agent with $\approx 1700$ reward and $\approx 17$ hits, showing stable monotonic improvement thanks to the trust-region constraint. Both REINFORCE variants remain near-zero reward throughout training: vanilla REINFORCE converges to $\approx 155$ ($\approx 2.5$ hits) and REINFORCE with Baseline to $\approx 232$ ($\approx 3.3$ hits). The EMA baseline provides only marginal variance reduction, insufficient to overcome the high-variance Monte Carlo gradient in this sparse-reward environment.
 
 ### 3.2 Actor-Critic Loss Dynamics
 
@@ -215,7 +221,7 @@ TODO
 </p>
 
 **Plot description:**
-TODO
+The critic loss (TD error) spikes early as the Q-function bootstraps from random values, then gradually decreases as the critic converges. The actor loss (negative expected Q-value) trends downward over training, reflecting that the policy learns to select actions with increasingly high Q-values. The total loss combines both components and mirrors the critic loss profile, since the critic term dominates the combined objective.
 
 ### 3.3 Actor-Critic Policy Visualization
 
@@ -227,7 +233,7 @@ TODO
 </p>
 
 **Plot description:**
-TODO
+The heatmap visualizes the greedy policy $\arg\max_a \pi(a \mid s)$ across a grid of (ball $y$, paddle $y$) positions for a fixed ball velocity directed toward the agent. Above the diagonal (paddle below the ball) the agent predominantly selects "Up"; below the diagonal (paddle above the ball) it selects "Down"; near the diagonal (paddle aligned with the ball) it selects "Stay". This confirms that the learned policy implements a sensible interception strategy — track the ball vertically and hold position once aligned.
 
 ---
 
@@ -245,7 +251,7 @@ The replay buffer capacity $M$ is a critical hyperparameter for the off-policy A
 </p>
 
 **Plot description:**
-TODO
+The smallest buffer ($M = 256$) fails completely, producing negative mean reward throughout training — mini-batches are almost entirely composed of consecutive, highly correlated transitions, preventing meaningful gradient updates. Buffers of $M = 1024$ and $M = 5000$ both learn successfully, reaching $\approx 2000$ reward. The largest buffer ($M = 10000$) achieves the best final performance ($\approx 2500$ reward) by maximally decorrelating samples, though its early-phase learning is slightly slower because fresh high-reward experience is diluted by older transitions.
 
 <p align="center">
   <img src="./readme_nec/buffer_comparison_other_stats.png" alt="Buffer capacity sweep: hits and loss dynamics" width="700"/>
@@ -255,7 +261,7 @@ TODO
 </p>
 
 **Plot description:**
-TODO
+The hits-per-episode curves mirror the reward trends: $M = 256$ never exceeds $\approx 0.2$ hits, while $M = 1024$ and $M = 5000$ reach $\approx 20$ hits and $M = 10000$ achieves $\approx 26$ hits. The loss dynamics reveal that smaller buffers produce highly volatile critic loss due to correlated mini-batches, whereas larger buffers yield smoother loss curves. Notably, $M = 256$ shows persistently high and erratic loss, confirming that the critic never learns a useful Q-function under extreme sample correlation.
 
 ---
 
@@ -265,7 +271,23 @@ TODO
 
 ---
 
-## 6. Repository Structure
+## 6. Summary
+
+This project compared four policy gradient methods on the Horizontal Pong environment. The key findings are:
+
+1. **Actor-Critic is the clear winner.** The off-policy Actor-Critic agent with a shared backbone achieves an average reward of $\approx 3200$ and sustains rallies of $\approx 33$ hits per episode, far surpassing all other methods. Its ability to reuse experience through a replay buffer makes it dramatically more sample-efficient — it reaches high performance within $\sim 1200$ episodes, while the on-policy methods require thousands more episodes yet converge to much lower scores.
+
+2. **TRPO is a solid second.** Trust Region Policy Optimization reaches $\approx 1700$ reward and $\approx 17$ hits per episode. The constrained policy updates prevent catastrophic collapses, producing stable, monotonic improvement. However, its on-policy nature limits sample efficiency compared to Actor-Critic.
+
+3. **Vanilla REINFORCE methods struggle.** Both REINFORCE ($\approx 155$ reward, $\approx 2.5$ hits) and REINFORCE with Baseline ($\approx 232$ reward, $\approx 3.3$ hits) converge to weak policies. The EMA baseline provides a modest variance reduction but is insufficient to overcome the fundamental high-variance problem of Monte Carlo policy gradients in this environment with sparse $\pm 100$ rewards.
+
+4. **Replay buffer capacity is critical for Actor-Critic.** The ablation study shows that a buffer size of $M = 256$ causes complete training failure (negative mean reward) due to extreme sample correlation. Increasing capacity to $M = 1024$ or $M = 5000$ yields functional agents ($\approx 2000$ reward), and $M = 10000$ achieves the best ablation result ($\approx 2500$ reward, $\approx 26$ hits). Larger buffers decorrelate mini-batches and improve training stability, though they slightly slow convergence in the early phase by diluting fresh experience with older transitions.
+
+5. **Off-policy learning with analytical gradients is the key advantage.** The Actor-Critic's analytical policy gradient (directly differentiating $\sum_a \pi(a|s) \cdot Q(s,a)$) avoids the high variance of log-probability-based estimators used in REINFORCE. Combined with the Expected-SARSA critic and entropy regularization, this yields stable, efficient learning even with a simple two-layer MLP architecture.
+
+---
+
+## 7. Repository Structure
 
 ```
 HorizontalPong/
