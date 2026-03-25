@@ -49,7 +49,7 @@ Each environment step proceeds as follows:
 
 **Parabolic paddle deflection.** When the ball hits a paddle, the vertical velocity receives a quadratic boost depending on where on the paddle face the impact occurred. Let $\Delta = b_y - p_y$ be the signed offset from the paddle center, and $h = \lfloor \text{PH}/2 \rfloor$. The normalized impact parameter is:
 
-$$t = \operatorname{clip}\left(\frac{\Delta}{h},\ -1,\ 1\right)$$
+$$t = \text{clip}\left(\frac{\Delta}{h},\ -1,\ 1\right)$$
 
 The boost added to $v_y$ is:
 
@@ -57,7 +57,7 @@ $$\Delta v_y = t \cdot |t| \cdot v_y^{\max}$$
 
 Center hits produce near-zero deflection while edge hits produce maximum deflection, with a smooth quadratic profile in between. The incoming $v_y$ is preserved and the boost is additive:
 
-$$v_y \leftarrow \operatorname{clip}\left(\operatorname{round}(v_y + \Delta v_y),\ -v_y^{\max},\ v_y^{\max}\right)$$
+$$v_y \leftarrow \text{clip}\left(\text{round}(v_y + \Delta v_y),\ -v_y^{\max},\ v_y^{\max}\right)$$
 
 **Stochastic bounce noise.** After each paddle hit, with probability $p_{\text{bounce}}$ (default 0.1), an additional random perturbation $\delta \sim \text{Uniform}(-1, 0, +1)$ is added to $v_y$. This makes the transitions stochastic even without opponent noise.
 
@@ -99,7 +99,7 @@ The simplest Monte Carlo policy gradient method. After collecting a batch of $K 
 
 $$\nabla_\theta J(\theta) = \frac{1}{|\mathcal{B}|}\sum_{(s_t, a_t, G_t) \in \mathcal{B}} \nabla_\theta \log \pi_\theta(a_t | s_t) \cdot \hat{G}_t$$
 
-where $\hat{G}_t = G_t / (\operatorname{std}(G) + \varepsilon)$ is std-normalized (**no baseline** — no mean subtraction). An entropy bonus with coefficient $\beta = 0.01$ encourages exploration. Gradients are clipped to norm $1.0$.
+where $\hat{G}_t = G_t / (\text{std}(G) + \varepsilon)$ is std-normalized (**no baseline** — no mean subtraction). An entropy bonus with coefficient $\beta = 0.01$ encourages exploration. Gradients are clipped to norm $1.0$.
 
 ### 2.2 REINFORCE with Baseline
 
