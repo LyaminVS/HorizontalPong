@@ -65,13 +65,7 @@ $$v_y \leftarrow \operatorname{clip}\left(\operatorname{round}(v_y + \Delta v_y)
 
 The left paddle is controlled by a `LeftPaddleOpponent` that uses **predictive interception**: when the ball moves toward it ($v_x < 0$), the opponent simulates the ball trajectory forward (including wall bounces) to predict the intercept $y$-coordinate at the paddle line, then moves toward that $y$ at `paddle_speed`. When the ball moves away, the opponent drifts toward field center.
 
-The opponent adds integer noise $\delta \sim \text{Uniform}(-\sigma \ldots +\sigma)$ to $v_y$ upon deflection. The noise level $\sigma$ follows an optional curriculum:
-
-| Training steps | $\sigma$ | Behavior |
-|----------------|----------|----------|
-| $0$ – $50\text{k}$ | 0 | Straight returns |
-| $50\text{k}$ – $150\text{k}$ | 1 | Slight angle variation |
-| $150\text{k}+$ | 2 | Strong angle variation |
+The opponent adds integer noise $\delta \sim \text{Uniform}(-\sigma \ldots +\sigma)$ to $v_y$ upon deflection, where $\sigma$ is a fixed parameter (default $\sigma = 0$, i.e. no noise).
 
 ### Episode Termination
 
@@ -202,20 +196,10 @@ This prevents late-training instability by gradually reducing the step size as t
 ### 3.1 Learning Curves — All Agents
 
 <p align="center">
-  <img src="./readme_nec/learning_curves_reward.png" alt="Learning curves: mean episode reward" width="700"/>
+  <img src="./readme_nec/reward_curves.png" alt="Learning curves: mean episode reward" width="700"/>
 </p>
 <p align="center">
-  <em>Mean episode reward (smoothed) as a function of training step for all four agents, trained for 500k steps with seed 42.</em>
-</p>
-
-**Plot description:**
-TODO
-
-<p align="center">
-  <img src="./readme_nec/learning_curves_hits.png" alt="Learning curves: mean hits per episode" width="700"/>
-</p>
-<p align="center">
-  <em>Mean ball deflections (hits) per episode over training. Hits directly measure gameplay skill — a higher value means the agent sustains longer rallies.</em>
+  <em>Mean episode reward (smoothed) as a function of training episode for all four agents.</em>
 </p>
 
 **Plot description:**
@@ -224,10 +208,10 @@ TODO
 ### 3.2 Actor-Critic Loss Dynamics
 
 <p align="center">
-  <img src="./readme_nec/ac_loss_curves.png" alt="Actor-Critic loss components over training" width="700"/>
+  <img src="./readme_nec/ac_loss.png" alt="Actor-Critic loss components over training" width="700"/>
 </p>
 <p align="center">
-  <em>Actor-Critic training dynamics: critic loss, actor loss, entropy loss, and gradient norm as functions of training step.</em>
+  <em>Actor-Critic training dynamics: critic loss, actor loss, and total loss as functions of training episode.</em>
 </p>
 
 **Plot description:**
@@ -254,30 +238,20 @@ TODO
 The replay buffer capacity $M$ is a critical hyperparameter for the off-policy Actor-Critic. A buffer that is too small may lead to overfitting on recent experience and correlated batches, while an excessively large buffer dilutes fresh high-reward transitions with stale data from an outdated policy. We sweep over $M \in \lbrace 256,\ 1024,\ 5000,\ 10000 \rbrace$ with all other hyperparameters fixed.
 
 <p align="center">
-  <img src="./readme_nec/buffer_sweep_reward.png" alt="Buffer capacity sweep: reward" width="700"/>
+  <img src="./readme_nec/buffer_comparison_reward.png" alt="Buffer capacity sweep: reward" width="700"/>
 </p>
 <p align="center">
-  <em>Mean episode reward over training for different replay buffer capacities. Each run uses the same seed and 50k training steps.</em>
-</p>
-
-**Plot description:**
-TODO
-
-<p align="center">
-  <img src="./readme_nec/buffer_sweep_hits.png" alt="Buffer capacity sweep: hits" width="700"/>
-</p>
-<p align="center">
-  <em>Mean hits per episode for different buffer capacities.</em>
+  <em>Mean episode reward over training for different replay buffer capacities.</em>
 </p>
 
 **Plot description:**
 TODO
 
 <p align="center">
-  <img src="./readme_nec/buffer_sweep_loss.png" alt="Buffer capacity sweep: critic loss" width="700"/>
+  <img src="./readme_nec/buffer_comparison_other_stats.png" alt="Buffer capacity sweep: hits and loss dynamics" width="700"/>
 </p>
 <p align="center">
-  <em>Critic loss dynamics for different buffer capacities. Smaller buffers exhibit higher loss volatility due to correlated samples, while larger buffers produce smoother but potentially slower-converging critic training.</em>
+  <em>Hits per episode and loss dynamics for different buffer capacities. Smaller buffers exhibit higher loss volatility due to correlated samples, while larger buffers produce smoother but potentially slower-converging training.</em>
 </p>
 
 **Plot description:**
