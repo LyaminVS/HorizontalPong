@@ -8,7 +8,7 @@ import random
 import numpy as np
 import pandas as pd
 import torch
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from src.environment.pong_env import PongEnv
 from src.agent.reinforce import ReinforceAgent
@@ -28,6 +28,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", type=str, default=TrainConfig.device, 
                         choices=["cpu", "cuda"])
     parser.add_argument(
+        "--artifacts-dir",
+        type=str,
+        default=TrainConfig.artifacts_dir,
+        help="Where to write logs/checkpoints for this run.",
+    )
+    parser.add_argument(
+        "--buffer-capacity",
+        type=int,
+        default=None,
+        help="Override ActorCriticConfig.buffer_capacity (actor_critic only).",
+    )
+    parser.add_argument(
         "--resume-checkpoint",
         type=str,
         default=None,
@@ -44,9 +56,11 @@ def set_all_seeds(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def create_agent(agent_type: str, device: str):
+def create_agent(agent_type: str, device: str, buffer_capacity_override: Optional[int] = None):
     if agent_type == "actor_critic":
         config = ActorCriticConfig()
+        if buffer_capacity_override is not None:
+            config.buffer_capacity = int(buffer_capacity_override)
         return ActorCriticAgent(
             state_dim=config.state_dim,
             action_dim=config.action_dim,
@@ -353,8 +367,13 @@ def main() -> None:
     
     env.set_random_bounce(True)
     
-    train_config = TrainConfig(total_steps=args.steps, seed=args.seed, device=args.device)
-    agent = create_agent(args.agent, args.device)
+    train_config = TrainConfig(
+        total_steps=args.steps,
+        seed=args.seed,
+        device=args.device,
+        artifacts_dir=args.artifacts_dir,
+    )
+    agent = create_agent(args.agent, args.device, buffer_capacity_override=args.buffer_capacity)
 
     if args.resume_checkpoint is not None:
         if not os.path.exists(args.resume_checkpoint):
