@@ -197,62 +197,9 @@ This prevents late-training instability by gradually reducing the step size as t
 
 ---
 
-## 3. Hyperparameters
+## 3. Training Results
 
-### Environment
-
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| $W \times H$ | $86 \times 64$ | Field size (pixels) |
-| $\text{PW} \times \text{PH}$ | $2 \times 12$ | Paddle size |
-| Paddle speed | 3 px/step | Paddle movement per action |
-| $v_x^{\max},\ v_y^{\max}$ | 4, 4 | Maximum ball speed components |
-| $T_{\max}$ | 5000 | Maximum episode length |
-| $\gamma$ | 0.99 | Discount factor (all agents) |
-
-### Actor-Critic
-
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| Shared MLP | $5 \to 256 \to 256$ | Backbone hidden layers |
-| Actor / Critic heads | $256 \to 3$ each | Separate linear heads |
-| Learning rate | $3 \times 10^{-4} \to 3 \times 10^{-5}$ | Adam, cosine decay |
-| $c_{\text{critic}}$ | 1.0 | Critic loss coefficient |
-| $c_{\text{entropy}}$ | 0.1 | Entropy loss coefficient |
-| Gradient clip norm | 1.0 | Max gradient L2 norm |
-| Buffer capacity $M$ | 50,000 | Replay buffer size |
-| Batch size $B$ | 1,000 | Mini-batch per update |
-| Update frequency $U$ | every 10 steps | Steps between gradient updates |
-
-### REINFORCE / REINFORCE-Baseline
-
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| Policy MLP | $5 \to 256 \to 256 \to 3$ | Same architecture |
-| Learning rate | $3 \times 10^{-4}$ | Adam optimizer |
-| Episode batch | 10 | Episodes accumulated before update |
-| Entropy coefficient | 0.01 | Entropy bonus weight |
-| Gradient clip norm | 1.0 | Max gradient L2 norm |
-| Baseline EMA decay | 0.99 | REINFORCE-Baseline only |
-
-### TRPO
-
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| Policy MLP | $5 \to 256 \to 256 \to 3$ | Same architecture |
-| $\delta_{\text{KL}}$ | 0.001 | Trust region size |
-| Entropy coefficient | 0.001 | Entropy bonus weight |
-| Gradient clip norm | 3.0 | Clip on flat gradient before CG |
-| CG iterations | 10 | Conjugate gradient steps |
-| Damping | 0.05 | Fisher matrix damping |
-| Line search steps | 10 | Backtracking iterations |
-| Backtrack coefficient | 0.8 | Step size reduction factor |
-
----
-
-## 4. Training Results
-
-### 4.1 Learning Curves — All Agents
+### 3.1 Learning Curves — All Agents
 
 <p align="center">
   <img src="./readme_nec/learning_curves_reward.png" alt="Learning curves: mean episode reward" width="700"/>
@@ -274,7 +221,7 @@ TODO
 **Plot description:**
 TODO
 
-### 4.2 Actor-Critic Loss Dynamics
+### 3.2 Actor-Critic Loss Dynamics
 
 <p align="center">
   <img src="./readme_nec/ac_loss_curves.png" alt="Actor-Critic loss components over training" width="700"/>
@@ -286,7 +233,7 @@ TODO
 **Plot description:**
 TODO
 
-### 4.3 Actor-Critic Policy Visualization
+### 3.3 Actor-Critic Policy Visualization
 
 <p align="center">
   <img src="./readme_nec/policy_decision_map.png" alt="Actor-Critic policy decision map" width="700"/>
@@ -300,9 +247,9 @@ TODO
 
 ---
 
-## 5. Ablation Studies
+## 4. Ablation Studies
 
-### 5.1 Replay Buffer Capacity
+### 4.1 Replay Buffer Capacity
 
 The replay buffer capacity $M$ is a critical hyperparameter for the off-policy Actor-Critic. A buffer that is too small may lead to overfitting on recent experience and correlated batches, while an excessively large buffer dilutes fresh high-reward transitions with stale data from an outdated policy. We sweep over $M \in \lbrace 256,\ 1024,\ 5000,\ 10000 \rbrace$ with all other hyperparameters fixed.
 
@@ -338,13 +285,13 @@ TODO
 
 ---
 
-## 6. Model Tournament
+## 5. Model Tournament
 
 *Section reserved for future tournament evaluation across trained agents. Results will be added after completion.*
 
 ---
 
-## 7. Repository Structure
+## 6. Repository Structure
 
 ```
 HorizontalPong/
