@@ -289,25 +289,25 @@ The critic loss is noticeably smoother for larger buffer capacities, consistent 
 **Plot description:**
 The total loss largely tracks the critic loss because the critic MSE term dominates the joint objective. As buffer capacity increases, the total loss becomes smoother, indicating more stable optimization.
 
-### 4.2 Hidden Dimension (256 vs 128)
+### 4.2 Hidden Dimension (256 vs 128 vs 64) — Actor-Critic
 
-To study model capacity, we run all four agents with two MLP hidden sizes: $h \in \lbrace 256,\ 128 \rbrace$, keeping all other hyperparameters unchanged.
+To study model capacity, we run **Actor-Critic only** with three MLP hidden sizes: $h \in \lbrace 256,\ 128,\ 64 \rbrace$, keeping all other hyperparameters unchanged.
 
 <p align="center">
   <img src="./readme_nec/dim_comparison_reward.png" alt="Hidden-dim ablation: reward curves" width="900"/>
 </p>
 <p align="center">
-  <em>Reward learning curves for all agents under hidden dimensions 256 and 128.</em>
+  <em>Reward learning curves for Actor-Critic under hidden dimensions 256, 128, and 64.</em>
 </p>
 
 **Plot description:**
-This ablation measures how reducing representational capacity affects learning speed and final policy quality. In general, the 256-wide models are expected to be more stable and to reach better asymptotic reward in this environment, while 128-wide models may train faster per step but can underfit complex ball-paddle interaction dynamics.
+This ablation measures how reducing representational capacity affects learning speed and final policy quality for Actor-Critic. In general, larger hidden dimensions are expected to improve stability and asymptotic performance, while smaller models may underfit the ball–paddle interaction dynamics and learn more slowly.
 
 <p align="center">
   <img src="./readme_nec/table_dim_comparison.png" alt="Hidden-dim ablation: evaluation table" width="900"/>
 </p>
 <p align="center">
-  <em>Deterministic evaluation metrics (mean reward, hits, episode length) comparing hidden dimensions 256 vs 128 for each agent.</em>
+  <em>Deterministic evaluation metrics comparing hidden dimensions 256 vs 128 vs 64 for Actor-Critic.</em>
 </p>
 
 **Table description:**
