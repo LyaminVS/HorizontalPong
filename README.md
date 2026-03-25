@@ -208,42 +208,22 @@ The learning rate is scheduled with cosine decay (with optional warmup) during t
 
 #### Actor-Critic Pseudocode
 
-```text
-Initialize actor-critic network parameters θ
-Initialize replay buffer D with capacity M
+**Algorithm: Off-Policy Actor–Critic (Expected-SARSA target)**
 
-for environment step t = 1..T:
-    Observe state s_t
-    Sample action a_t ~ π_θ(. | s_t)
-    Step environment -> (s_{t+1}, r_t, done_t)
-    Store (s_t, a_t, r_t, s_{t+1}, done_t) in D
+**Input:** environment; replay capacity $M$; minibatch size $B$; update period $U$ (in env steps); discount $\gamma$; loss weights $c_{\text{critic}}$, $c_{\text{entropy}}$.
 
-    if t % update_every == 0 and |D| >= batch_size:
-        Sample mini-batch B from D
+**Output:** network parameters $\theta$ (shared backbone, actor logits, critic $Q$).
 
-        # Critic target (no gradient through target branch)
-        with no_grad:
-            logits_next = actor(s')
-            probs_next = softmax(logits_next)
-            q_next_all = critic(s')
-            v_next = sum_a probs_next(a) * q_next_all(a)
-            y = r + γ * (1 - done) * v_next
-
-        critic_loss = MSE(Q(s, a), y)
-
-        # Actor objective with detached Q-values
-        probs = softmax(actor(s))
-        q_all = detach(critic(s))
-        actor_loss = -mean(sum_a probs(a) * q_all(a))
-
-        entropy_loss = mean(sum_a probs(a) * log probs(a))
-        total_loss = c_critic * critic_loss + actor_loss + c_entropy * entropy_loss
-
-        Backprop(total_loss), gradient clipping, optimizer step
-        Update learning rate by cosine schedule
-
-    if done_t: reset environment
-```
+1. $\theta \leftarrow \mathrm{init}$; $\mathcal{D} \leftarrow \emptyset$; $t \leftarrow 0$; observe $s$.
+2. **while** training budget remains:
+3. $\quad a \sim \pi_\theta(\cdot \mid s)$; $(s', r, d) \leftarrow \mathrm{Env.step}(s, a)$; push $(s,a,r,s',d)$ into $\mathcal{D}$ (cap. $M$); $s \leftarrow s'$; $t \leftarrow t + 1$.
+4. $\quad$ **if** $t \bmod U = 0$ **and** $|\mathcal{D}| \ge B$ **then**
+5. $\quad\quad$ sample minibatch of size $B$ from $\mathcal{D}$.
+6. $\quad\quad$ **no grad on targets:** $y \leftarrow r + \gamma(1-d)\,\sum_{a'} \pi_\theta(a' \mid s')\,Q_\theta(s', a')$ per sample.
+7. $\quad\quad$ $L_{\text{critic}} \leftarrow \mathrm{MSE}(Q_\theta(s,a), y)$.
+8. $\quad\quad$ $L_{\text{actor}} \leftarrow -\mathbb{E}\big[\sum_a \pi_\theta(a \mid s)\,\mathrm{stopgrad}(Q_\theta(s,a))\big]$.
+9. $\quad\quad$ minimize $c_{\text{critic}} L_{\text{critic}} + L_{\text{actor}} + c_{\text{entropy}} L_{\text{entropy}}$; clip; optimizer step; cosine LR.
+10. $\quad$ **if** episode ended **then** reset $s$.
 
 ### 2.5 Hyperparameters (Documented Defaults)
 
@@ -402,7 +382,7 @@ The following multi-episode evaluation was run with:
 | `reinforce` | `-4.000 ± 124.836` | `0.96` | `5` | `159.4` |
 | `reinforce_baseline` | `25.000 ± 143.788` | `1.25` | `6` | `194.5` |
 | `trpo` | `1260.000 ± 1132.961` | `13.51` | `44` | `1621.3` |
-| `actor_critic` | `4352.000 ± 1948.768` | `43.73` | `70` | `4408.0` |
+| `actor_critic` | `53466.000 ± 17320.273` | `534.66` | `695` | `50000.0` |
 
 **Interpretation:**
 - Actor-Critic remains the strongest method under the updated speed settings, with the highest reward and hit count.
