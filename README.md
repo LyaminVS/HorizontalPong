@@ -340,9 +340,6 @@ This ablation measures how reducing representational capacity affects learning s
 <p align="center">
   <img src="./readme_nec/table_dim_comparison.png" alt="Hidden-dim ablation: evaluation table" width="900"/>
 </p>
-<p align="center">
-  <em>Deterministic evaluation metrics comparing hidden dimensions 256 vs 128 vs 64 for Actor-Critic.</em>
-</p>
 
 **Table description:**
 This table summarizes the evaluation performance of the trained checkpoints under a deterministic (argmax) policy. It complements the learning curves by showing the final policy quality for each agent and hidden dimension under the same evaluation conditions.
