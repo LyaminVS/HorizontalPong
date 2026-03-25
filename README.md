@@ -255,14 +255,14 @@ The critic loss (TD error) spikes early as the Q-function bootstraps from random
 ### 3.3 Actor-Critic Policy Visualization
 
 <p align="center">
-  <img src="./readme_nec/heatmap1.jpg" alt="Actor-Critic policy decision map" width="700"/>
+  <img src="./readme_nec/heatmap1.png" alt="Actor-Critic policy decision map" width="700"/>
 </p>
 <p align="center">
-  <em>Policy decision map for the trained Actor-Critic agent. Each cell shows the preferred action (up/down/stay) as a function of agent paddle position (y-axis) and ball position (x-axis), for a fixed ball velocity. The map reveals the learned interception strategy: the agent moves toward the ball when it is approaching and stays otherwise.</em>
+  <em>Policy decision map for the trained Actor-Critic agent. Each cell shows the preferred action (up/down/stay) as a function of agent paddle position (x-axis: `py`) and ball position (y-axis: `by`) for a fixed ball velocity. The map shows a clear interception rule: move toward the ball when misaligned and stay near the diagonal where `py \approx by`.</em>
 </p>
 
 **Plot description:**
-The heatmap visualizes the greedy policy $\arg\max_a \pi(a \mid s)$ across a grid of (ball $y$, paddle $y$) positions for a fixed ball velocity directed toward the agent. Above the diagonal (paddle below the ball) the agent predominantly selects "Up"; below the diagonal (paddle above the ball) it selects "Down"; near the diagonal (paddle aligned with the ball) it selects "Stay". This confirms that the learned policy implements a sensible interception strategy — track the ball vertically and hold position once aligned.
+The heatmap visualizes the greedy policy $\arg\max_a \pi(a \mid s)$ across a grid of (ball $y$, paddle $y$) positions for a fixed velocity. The decision boundary is concentrated around the diagonal: in one half-plane the policy chooses one movement direction, in the opposite half-plane it chooses the reverse direction, and near the diagonal it mostly selects "Stay". This matches an interception controller that reduces vertical misalignment and stabilizes once aligned.
 
 ---
 
