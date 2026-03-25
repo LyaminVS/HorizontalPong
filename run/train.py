@@ -40,6 +40,12 @@ def parse_args() -> argparse.Namespace:
         help="Override ActorCriticConfig.buffer_capacity (actor_critic only).",
     )
     parser.add_argument(
+        "--hidden-dim",
+        type=int,
+        default=None,
+        help="Override hidden layer width for the selected agent.",
+    )
+    parser.add_argument(
         "--resume-checkpoint",
         type=str,
         default=None,
@@ -56,11 +62,18 @@ def set_all_seeds(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def create_agent(agent_type: str, device: str, buffer_capacity_override: Optional[int] = None):
+def create_agent(
+    agent_type: str,
+    device: str,
+    buffer_capacity_override: Optional[int] = None,
+    hidden_dim_override: Optional[int] = None,
+):
     if agent_type == "actor_critic":
         config = ActorCriticConfig()
         if buffer_capacity_override is not None:
             config.buffer_capacity = int(buffer_capacity_override)
+        if hidden_dim_override is not None:
+            config.hidden_dim = int(hidden_dim_override)
         return ActorCriticAgent(
             state_dim=config.state_dim,
             action_dim=config.action_dim,
@@ -81,6 +94,8 @@ def create_agent(agent_type: str, device: str, buffer_capacity_override: Optiona
         )
     if agent_type == "reinforce":
         config = ReinforceConfig()
+        if hidden_dim_override is not None:
+            config.hidden_dim = int(hidden_dim_override)
         return ReinforceAgent(
             state_dim=config.state_dim,
             action_dim=config.action_dim,
@@ -91,6 +106,8 @@ def create_agent(agent_type: str, device: str, buffer_capacity_override: Optiona
         )
     if agent_type == "reinforce_baseline":
         config = ReinforceBaselineConfig()
+        if hidden_dim_override is not None:
+            config.hidden_dim = int(hidden_dim_override)
         return ReinforceBaselineAgent(
             state_dim=config.state_dim,
             action_dim=config.action_dim,
@@ -101,6 +118,8 @@ def create_agent(agent_type: str, device: str, buffer_capacity_override: Optiona
         )
     if agent_type == "trpo":
         config = TRPOConfig()
+        if hidden_dim_override is not None:
+            config.hidden_dim = int(hidden_dim_override)
         return TRPOAgent(
             state_dim=config.state_dim,
             action_dim=config.action_dim,
@@ -373,7 +392,12 @@ def main() -> None:
         device=args.device,
         artifacts_dir=args.artifacts_dir,
     )
-    agent = create_agent(args.agent, args.device, buffer_capacity_override=args.buffer_capacity)
+    agent = create_agent(
+        args.agent,
+        args.device,
+        buffer_capacity_override=args.buffer_capacity,
+        hidden_dim_override=args.hidden_dim,
+    )
 
     if args.resume_checkpoint is not None:
         if not os.path.exists(args.resume_checkpoint):

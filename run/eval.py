@@ -39,6 +39,12 @@ def parse_args() -> argparse.Namespace:
         help="Path to the saved model checkpoint (.pt)."
     )
     parser.add_argument(
+        "--hidden-dim",
+        type=int,
+        default=None,
+        help="Override hidden layer width for the selected agent (must match checkpoint).",
+    )
+    parser.add_argument(
         "--episodes", 
         type=int, 
         default=EvalConfig.num_episodes,
@@ -63,20 +69,25 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_agent(agent_type: str, checkpoint_path: str, device: str = "cpu"):
+def load_agent(
+    agent_type: str,
+    checkpoint_path: str,
+    device: str = "cpu",
+    hidden_dim_override: int | None = None,
+):
     """Instantiate the agent and load weights from a checkpoint file."""
     if agent_type == "reinforce":
         from src.agent.reinforce import ReinforceAgent
-        agent = ReinforceAgent(device=device)
+        agent = ReinforceAgent(hidden_dim=hidden_dim_override or 256, device=device)
     elif agent_type == "actor_critic":
         from src.agent.actor_critic import ActorCriticAgent
-        agent = ActorCriticAgent(device=device)
+        agent = ActorCriticAgent(hidden_dim=hidden_dim_override or 256, device=device)
     elif agent_type == "reinforce_baseline":
         from src.agent.reinforce_baseline import ReinforceBaselineAgent
-        agent = ReinforceBaselineAgent(device=device)
+        agent = ReinforceBaselineAgent(hidden_dim=hidden_dim_override or 256, device=device)
     elif agent_type == "trpo":
         from src.agent.trpo import TRPOAgent
-        agent = TRPOAgent(device=device)
+        agent = TRPOAgent(hidden_dim=hidden_dim_override or 256, device=device)
     else:
         raise ValueError(f"Unknown agent type: {agent_type}")
         
@@ -196,7 +207,7 @@ def main() -> None:
     env.set_global_step(200_000) 
     
     # Load model
-    agent = load_agent(args.agent, args.checkpoint)
+    agent = load_agent(args.agent, args.checkpoint, hidden_dim_override=args.hidden_dim)
 
     # Mode 1: Live Rendering
     if args.render:
