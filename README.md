@@ -51,7 +51,8 @@ $$p_y' = \begin{cases}
 p_y & a_t = 2
 \end{cases}$$
 
-After this action-dependent paddle update, all remaining parts of $T$ are deterministic physics (ball advance, wall bounce, swept paddle collisions, and parabolic deflection):
+After this action-dependent paddle update, all remaining parts of $T$ are deterministic physics (ball advance, wall bounce, swept paddle collisions, and parabolic deflection).  
+In short: **deterministic core dynamics + optional stochastic bounce noise**.
 
 1. **Paddle update**: agent paddle moves according to the selected action, clamped to valid vertical range.
 2. **Ball advance**: $b_x \leftarrow b_x + v_x$, $b_y \leftarrow b_y + v_y$.
@@ -117,7 +118,7 @@ where $\hat{G}_t = G_t / (\text{std}(G) + \varepsilon)$ is std-normalized (**no 
 
 Identical to REINFORCE but subtracts an **exponential moving average (EMA)** of episode returns as a heuristic baseline:
 
-$$b \leftarrow 0.99 \cdot b + 0.01 \cdot \bar{G}_ {\text{episode}}$$
+$$b \leftarrow 0.99 \cdot b + 0.01 \cdot \bar{G}_{\text{episode}}$$
 
 The advantage $A_t = G_t - b$ replaces $G_t$ in the policy gradient, followed by std-normalization. This reduces variance without introducing a learned value function. The baseline scalar is persisted across checkpoints.
 
@@ -147,7 +148,7 @@ The **Actor-Critic** is the primary agent studied in this project. Unlike the on
 
 The agent uses a **single shared MLP backbone** with two separate linear heads — one for action logits (actor) and one for per-action Q-values (critic):
 
-$$\text{state}\ (5) \to \underbrace{\text{Linear}(256) \to \text{ReLU} \to \text{Linear}(256) \to \text{ReLU}}_ {\text{shared backbone}} \to \phi(s)$$
+$$\text{state}\ (5) \to \underbrace{\text{Linear}(256) \to \text{ReLU} \to \text{Linear}(256) \to \text{ReLU}}_{\text{shared backbone}} \to \phi(s)$$
 
 $$\phi(s) \to \text{Actor head: Linear}(3) \to \text{logits } \in \mathbb{R}^{|\mathcal{A}|}$$
 
@@ -195,11 +196,33 @@ with default coefficients $c_{\text{critic}} = 1.0$ and $c_{\text{entropy}} = 0.
 
 #### Learning Rate Schedule
 
-The learning rate follows a **cosine decay** from $\text{lr}_ {\max}$ to $\text{lr}_ {\min}$, with an optional linear warmup phase:
+The learning rate follows a **cosine decay** from $\text{lr}_{\max}$ to $\text{lr}_{\min}$, with an optional linear warmup phase:
 
-$$\text{lr}(t) = \begin{cases} \text{lr}_ {\min} + (\text{lr}_ {\max} - \text{lr}_ {\min}) \cdot \frac{t}{T_ {\text{warmup}}} & \text{if } t < T_{\text{warmup}} \\\\ \text{lr}_ {\min} + \frac{1}{2}(\text{lr}_ {\max} - \text{lr}_ {\min})\left(1 + \cos\left(\pi \cdot \frac{t - T_ {\text{warmup}}}{T_ {\text{decay}} - T_{\text{warmup}}}\right)\right) & \text{otherwise} \end{cases}$$
+$$\text{lr}(t) = \begin{cases} \text{lr}_{\min} + (\text{lr}_{\max} - \text{lr}_{\min}) \cdot \frac{t}{T_{\text{warmup}}} & \text{if } t < T_{\text{warmup}} \\\\ \text{lr}_{\min} + \frac{1}{2}(\text{lr}_{\max} - \text{lr}_{\min})\left(1 + \cos\left(\pi \cdot \frac{t - T_{\text{warmup}}}{T_{\text{decay}} - T_{\text{warmup}}}\right)\right) & \text{otherwise} \end{cases}$$
 
 This prevents late-training instability by gradually reducing the step size as the policy approaches convergence.
+
+### 2.5 Hyperparameters (Documented Defaults)
+
+Main defaults used in experiments (from `run/config.py`):
+
+| Group | Parameter | Default |
+|------|-----------|---------|
+| Environment | `width`, `height` | `86`, `64` |
+| Environment | `paddle_height`, `paddle_speed` | `12`, `3` |
+| Environment | `max_ball_speed_x`, `max_ball_speed_y` | `4`, `4` |
+| Environment | `t_max` | `5000` |
+| Training | `total_steps` | `500000` |
+| Training | `seed`, `device` | `42`, `cpu` |
+| Actor-Critic | `hidden_dim`, `gamma` | `256`, `0.99` |
+| Actor-Critic | `lr`, `lr_min` | `3e-4`, `3e-5` |
+| Actor-Critic | `buffer_capacity`, `batch_size`, `update_every` | `50000`, `1000`, `10` |
+| Actor-Critic | `critic_coeff`, `entropy_coeff`, `grad_clip_norm` | `1.0`, `0.1`, `1.0` |
+| REINFORCE | `hidden_dim`, `gamma`, `lr_actor` | `256`, `0.99`, `3e-4` |
+| REINFORCE-Baseline | `hidden_dim`, `gamma`, `lr_actor` | `256`, `0.99`, `3e-4` |
+| TRPO | `hidden_dim`, `gamma` | `256`, `0.99` |
+| TRPO | `max_kl`, `damping`, `cg_iters` | `0.001`, `0.05`, `10` |
+| TRPO | `backtrack_iters`, `backtrack_coeff`, `grad_clip_norm` | `10`, `0.8`, `3.0` |
 
 ---
 
@@ -372,7 +395,7 @@ HorizontalPong/
 │   ├── learning_curves.ipynb          # Compare all agents: reward, hits, losses
 │   ├── policy_decision_map.ipynb      # Interactive AC policy heatmaps (ipywidgets)
 │   ├── buffer_capacity_compare.ipynb  # Sweep AC buffer capacity + training runs
-│   └── hidden_dim_compare.ipynb       # Sweep hidden_dim (256 vs 128) for all agents
+│   └── hidden_dim_compare.ipynb       # Sweep hidden_dim (256/128/64) for Actor-Critic
 │
 └── artifacts/                         # Model checkpoints, training logs, GIFs
     ├── .gitkeep

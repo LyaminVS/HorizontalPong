@@ -36,3 +36,6 @@ artifacts/*
 *.ckpt
 *.csv
 
+# Local duplicate export images (keep primary README assets only)
+readme_nec/* 2.png
+
