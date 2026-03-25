@@ -59,7 +59,7 @@ Center hits produce near-zero deflection while edge hits produce maximum deflect
 
 $$v_y \leftarrow \operatorname{clip}\left(\operatorname{round}(v_y + \Delta v_y),\ -v_y^{\max},\ v_y^{\max}\right)$$
 
-**Stochastic bounce noise.** After each paddle hit, with probability $p_{\text{bounce}}$ (default 1.0), an additional random perturbation $\delta \sim \text{Uniform}(-1, 0, +1)$ is added to $v_y$. This makes the transitions stochastic even without opponent noise.
+**Stochastic bounce noise.** After each paddle hit, with probability $p_{\text{bounce}}$ (default 0.1), an additional random perturbation $\delta \sim \text{Uniform}(-1, 0, +1)$ is added to $v_y$. This makes the transitions stochastic even without opponent noise.
 
 ### Opponent
 
