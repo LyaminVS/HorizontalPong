@@ -66,11 +66,8 @@ However, the full transition is **not deterministic** because random bounce pert
 2. **Ball advance**: $b_x \leftarrow b_x + v_x$, $b_y \leftarrow b_y + v_y$.
 3. **Wall bounce**: if $b_y \leq 0$ or $b_y \geq H{-}1$, the vertical velocity reverses ($v_y \leftarrow -v_y$) and $b_y$ is clamped.
 4. **Agent paddle hit**: swept collision detects whether the ball crossed the paddle x-line $x_R$ during this step. On hit, $v_x \leftarrow -|v_x|$ and parabolic angular deflection is applied (see below).
-<<<<<<< HEAD
 5. **Opponent paddle hit**: the left paddle follows a **hand-crafted heuristic** (predictive interception; see below), not a learned model. On deflection it may apply optional integer bounce noise controlled by $\sigma$ (default $0$).
-=======
-5. **Opponent paddle hit**: the left paddle (controlled by a rule-based algorythm) intercepts the ball and applies curriculum-controlled bounce noise.
->>>>>>> 48fce30d8cec02de340eb90124eabd04f1d9c419
+
 
 **Parabolic paddle deflection.** When the ball hits a paddle, the vertical velocity receives a quadratic boost depending on where on the paddle face the impact occurred. Let $\Delta = b_y - p_y$ be the signed offset from the paddle center, and $h = \lfloor \text{PH}/2 \rfloor$. The normalized impact parameter is:
 
